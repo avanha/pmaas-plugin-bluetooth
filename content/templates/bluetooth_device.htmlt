@@ -1,0 +1,21 @@
+<div class="entity-bluetooth-device">
+    <div class="title-row">
+        <div class="name">{{.Name}}</div>
+        {{if not .RSSIData.IsEmpty}}
+            {{with .RSSIData -}}
+            <div class="rssi-data">
+            {{/* Bootstrap icon for signal strength indication: https://icons.getbootstrap.com/icons/reception-0/ */}}
+                <div>{{.RSSI}}</div>
+                {{/*<div>{{.LastUpdateTime}}</div>*/}}
+            </div>
+            {{end}}
+        {{end}}
+    </div>
+    <div class="info-row">
+        <div class="address">{{.Address}}</div>
+        <div class="timestamp">
+            <div class="label">Updated</div>
+            <div class="value">{{RelativeTime .LastUpdateTime}}</div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,51 @@
+.entity-bluetooth-device {
+
+}
+
+.entity-bluetooth-device .title-row {
+    display: flex;
+    flex-flow: row nowrap;
+    /*gap: 5px;*/
+}
+
+.entity-bluetooth-device .title-row .name {
+    flex: 1;
+    font-size: 15pt;
+}
+
+.entity-bluetooth-device .title-row .rssi-data {
+    color: grey;
+}
+
+.entity-bluetooth-device .title-row .battery-data {
+    color: grey;
+    margin-left: 5px;
+}
+
+.entity-bluetooth-device .title-row .battery-data .value::after {
+    content: "%";
+}
+
+.entity-bluetooth-device .info-row {
+    display: flex;
+    flex-flow: row wrap;
+}
+
+.entity-bluetooth-device .info-row .address {
+    flex: 1;
+}
+
+.entity-bluetooth-device .info-row .timestamp {
+    display: flex;
+    flex-flow: row nowrap;
+    color: grey;
+    /*gap: 5px;*/
+}
+
+.entity-bluetooth-device .info-row .timestamp .label {
+    margin-right: 5px;
+}
+
+.entity-bluetooth-device .info-row .timestamp .label::after {
+    content: ":";
+}
