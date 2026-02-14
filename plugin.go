@@ -109,7 +109,7 @@ type state struct {
 	devices        map[string]*device
 }
 
-type bluetoothPlugin struct {
+type plugin struct {
 	state *state
 }
 
@@ -117,8 +117,8 @@ type BluetoothPlugin interface {
 	spi.IPMAASPlugin
 }
 
-func NewBluetoothPlugin(config BluetoothPluginConfig) BluetoothPlugin {
-	instance := &bluetoothPlugin{
+func NewPlugin(config PluginConfig) BluetoothPlugin {
+	instance := &plugin{
 		state: &state{
 			adapterId:      "",
 			container:      nil,
@@ -127,7 +127,7 @@ func NewBluetoothPlugin(config BluetoothPluginConfig) BluetoothPlugin {
 		},
 	}
 
-	if config.Adapter == DEFAULT_ADAPTER {
+	if config.Adapter == DefaultAdapter {
 		instance.state.adapterId = api.GetDefaultAdapterID()
 	} else {
 		instance.state.adapterId = config.Adapter
@@ -193,9 +193,9 @@ func NewBluetoothPlugin(config BluetoothPluginConfig) BluetoothPlugin {
 }
 
 // Implementation of spi.IPMAASPlugin
-var _ spi.IPMAASPlugin = (*bluetoothPlugin)(nil)
+var _ spi.IPMAASPlugin = (*plugin)(nil)
 
-func (p *bluetoothPlugin) Init(container spi.IPMAASContainer) {
+func (p *plugin) Init(container spi.IPMAASContainer) {
 	p.state.container = container
 	container.ProvideContentFS(&contentFS, "content")
 	container.EnableStaticContent("static")
@@ -204,7 +204,7 @@ func (p *bluetoothPlugin) Init(container spi.IPMAASContainer) {
 
 var renderListOptions = spi.RenderListOptions{Title: "Bluetooth Devices"}
 
-func (p *bluetoothPlugin) HandleHttpList(w http.ResponseWriter, r *http.Request) {
+func (p *plugin) HandleHttpList(w http.ResponseWriter, r *http.Request) {
 	publishedDevices := make([]Sortable, 0)
 
 	for _, device := range p.state.devices {
@@ -249,7 +249,7 @@ func ChoosePublishedDeviceName(dev *device) string {
 	return dev.LocalName
 }
 
-func (p *bluetoothPlugin) Start() {
+func (p *plugin) Start() {
 	fmt.Printf("%s Starting...\n", *p)
 
 	p.state.container.RegisterEntityRenderer(
@@ -273,7 +273,7 @@ func (p *bluetoothPlugin) Start() {
 	fmt.Printf("%s Started...\n", *p)
 }
 
-func (p *bluetoothPlugin) Stop() {
+func (p *plugin) Stop() {
 	fmt.Printf("%s Stopping...\n", *p)
 
 	if p.state.scanCancelFunc != nil {
@@ -288,7 +288,7 @@ func (p *bluetoothPlugin) Stop() {
 	fmt.Printf("%s Stopped\n", *p)
 }
 
-func (p *bluetoothPlugin) run(ctx context.Context, runDone chan error) {
+func (p *plugin) run(ctx context.Context, runDone chan error) {
 	// Register any pre-configured devices
 	for _, dev := range p.state.devices {
 		p.registerDevice(dev)
@@ -336,7 +336,7 @@ func (p *bluetoothPlugin) run(ctx context.Context, runDone chan error) {
 
 }
 
-func (p *bluetoothPlugin) doScan(ctx context.Context) error {
+func (p *plugin) doScan(ctx context.Context) error {
 	scanEventCh, scanCancelFunc, err := scanner.NewScanner().StartScan(p.state.adapterId)
 
 	if err != nil {
@@ -383,7 +383,7 @@ func wait(ctx context.Context, duration time.Duration) bool {
 	}
 }
 
-func (p *bluetoothPlugin) readScanEvents(scanEventCh chan *scanner.ScanEvent, doneCh chan error) {
+func (p *plugin) readScanEvents(scanEventCh chan *scanner.ScanEvent, doneCh chan error) {
 	for evt := range scanEventCh {
 		if evt == nil {
 			fmt.Print("readScanEvents, received nil event from scanEventCh, exiting loop\n")
@@ -419,7 +419,7 @@ func (p *bluetoothPlugin) readScanEvents(scanEventCh chan *scanner.ScanEvent, do
 	close(doneCh)
 }
 
-func (p *bluetoothPlugin) handleDeviceDiscovered(evt *scanner.ScanEvent) {
+func (p *plugin) handleDeviceDiscovered(evt *scanner.ScanEvent) {
 	dev, ok := p.state.devices[evt.Address]
 
 	if ok {
@@ -498,7 +498,7 @@ func (p *bluetoothPlugin) handleDeviceDiscovered(evt *scanner.ScanEvent) {
 	}
 }
 
-func (p *bluetoothPlugin) trimDevices() {
+func (p *plugin) trimDevices() {
 	if len(p.state.devices) < 100 {
 		return
 	}
@@ -551,7 +551,7 @@ func indexOf(e string, values []string) int {
 	return -1
 }
 
-func (p *bluetoothPlugin) handleDeviceTypeUpdated(evt *scanner.ScanEvent) bool {
+func (p *plugin) handleDeviceTypeUpdated(evt *scanner.ScanEvent) bool {
 	dev, ok := p.state.devices[evt.Address]
 
 	if !ok {
@@ -578,7 +578,7 @@ func (p *bluetoothPlugin) handleDeviceTypeUpdated(evt *scanner.ScanEvent) bool {
 	return true
 }
 
-func (p *bluetoothPlugin) handleEnvironmentDataUpdated(evt *scanner.ScanEvent) bool {
+func (p *plugin) handleEnvironmentDataUpdated(evt *scanner.ScanEvent) bool {
 	dev, ok := p.state.devices[evt.Address]
 
 	if !ok {
@@ -605,7 +605,7 @@ func (p *bluetoothPlugin) handleEnvironmentDataUpdated(evt *scanner.ScanEvent) b
 	return true
 }
 
-func (p *bluetoothPlugin) handleRSSIUpdated(evt *scanner.ScanEvent) bool {
+func (p *plugin) handleRSSIUpdated(evt *scanner.ScanEvent) bool {
 	dev, ok := p.state.devices[evt.Address]
 
 	if !ok {
@@ -631,7 +631,7 @@ func (p *bluetoothPlugin) handleRSSIUpdated(evt *scanner.ScanEvent) bool {
 	return true
 }
 
-func (p *bluetoothPlugin) handleUUIDSUpdated(evt *scanner.ScanEvent) bool {
+func (p *plugin) handleUUIDSUpdated(evt *scanner.ScanEvent) bool {
 	dev, ok := p.state.devices[evt.Address]
 
 	if !ok {
@@ -645,7 +645,7 @@ func (p *bluetoothPlugin) handleUUIDSUpdated(evt *scanner.ScanEvent) bool {
 	return true
 }
 
-func (p *bluetoothPlugin) handleBatteryLevelUpdated(evt *scanner.ScanEvent) bool {
+func (p *plugin) handleBatteryLevelUpdated(evt *scanner.ScanEvent) bool {
 	dev, ok := p.state.devices[evt.Address]
 
 	if !ok {
@@ -669,7 +669,7 @@ func (p *bluetoothPlugin) handleBatteryLevelUpdated(evt *scanner.ScanEvent) bool
 	return true
 }
 
-func (p *bluetoothPlugin) applyDeviceType(dev *device, deviceType common.DeviceType, makeAndModel string) {
+func (p *plugin) applyDeviceType(dev *device, deviceType common.DeviceType, makeAndModel string) {
 	dev.DeviceType = deviceType
 	dev.DeviceMakeAndModel = makeAndModel
 
@@ -679,7 +679,7 @@ func (p *bluetoothPlugin) applyDeviceType(dev *device, deviceType common.DeviceT
 	// We'll need to create or update global entity registration
 }
 
-func (p *bluetoothPlugin) registerDevice(dev *device) {
+func (p *plugin) registerDevice(dev *device) {
 	entityType := getEntityType(dev.DeviceType)
 	id, err := p.state.container.RegisterEntity(dev.Address, entityType, dev.LocalName, nil)
 
@@ -699,7 +699,7 @@ func getEntityType(deviceType common.DeviceType) reflect.Type {
 	return publishedDeviceType
 }
 
-func (p *bluetoothPlugin) bluetoothDeviceRendererFactory() (spi.EntityRenderer, error) {
+func (p *plugin) bluetoothDeviceRendererFactory() (spi.EntityRenderer, error) {
 	// Load the template
 	t, err := p.state.container.GetTemplate(&bluetoothDeviceTemplate)
 
@@ -727,7 +727,7 @@ func (p *bluetoothPlugin) bluetoothDeviceRendererFactory() (spi.EntityRenderer, 
 	return spi.EntityRenderer{StreamingRenderFunc: renderer, Styles: t.Styles, Scripts: t.Scripts}, nil
 }
 
-func (p *bluetoothPlugin) broadcastStateChangedEvent(dev *device) {
+func (p *plugin) broadcastStateChangedEvent(dev *device) {
 	event := events.EntityStateChangedEvent{
 		EntityEvent: events.EntityEvent{
 			Id:         dev.PmaasEntityId,

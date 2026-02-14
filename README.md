@@ -1,3 +1,13 @@
+# A PMAAS Plugin for Bluetooth BLE Beacons
+
+Scans for BLE beacons using Bluez over DBus.  
+
+## Notes
+
+This is my oldest plugin, so it isn't exactly the be Go code or all that well organized. 
+
+### Historical Notes
+
 Govee is integrated in HA's ble_monitor:
 
 https://github.com/custom-components/ble_monitor
