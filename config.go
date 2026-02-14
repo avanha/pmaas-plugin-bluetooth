@@ -1,7 +1,7 @@
 package bluetooth
 
 import "fmt"
-import "pmaas.io/plugins/bluetooth/common"
+import "github.com/avanha/pmaas-plugin-bluetooth/common"
 
 const DEFAULT_ADAPTER string = "DEFAULT_ADAPTER"
 

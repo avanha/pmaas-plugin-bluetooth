@@ -1,7 +1,7 @@
 package inkbird
 
 import (
-	"pmaas.io/plugins/bluetooth/scanner/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/scanner/common"
 	"testing"
 )
 

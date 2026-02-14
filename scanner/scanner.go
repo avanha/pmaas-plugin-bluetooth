@@ -6,15 +6,15 @@ import (
 	"strings"
 	"time"
 
+	pc "github.com/avanha/pmaas-plugin-bluetooth/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/scanner/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/scanner/parser/govee"
+	"github.com/avanha/pmaas-plugin-bluetooth/scanner/parser/inkbird"
 	dbus "github.com/godbus/dbus/v5"
 	"github.com/muka/go-bluetooth/api"
 	"github.com/muka/go-bluetooth/bluez"
 	"github.com/muka/go-bluetooth/bluez/profile/adapter"
 	"github.com/muka/go-bluetooth/bluez/profile/device"
-	pc "pmaas.io/plugins/bluetooth/common"
-	"pmaas.io/plugins/bluetooth/scanner/common"
-	"pmaas.io/plugins/bluetooth/scanner/parser/govee"
-	"pmaas.io/plugins/bluetooth/scanner/parser/inkbird"
 )
 
 type Scanner struct {

@@ -12,13 +12,13 @@ import (
 	"text/template"
 	"time"
 
-	"pmaas.io/spi/events"
+	"github.com/avanha/pmaas-spi/events"
 
+	"github.com/avanha/pmaas-plugin-bluetooth/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/scanner"
+	"github.com/avanha/pmaas-spi"
+	environmental "github.com/avanha/pmaas-spi/environment"
 	"github.com/muka/go-bluetooth/api"
-	"pmaas.io/plugins/bluetooth/common"
-	"pmaas.io/plugins/bluetooth/scanner"
-	"pmaas.io/spi"
-	environmental "pmaas.io/spi/environment"
 )
 
 //go:embed content/static content/templates

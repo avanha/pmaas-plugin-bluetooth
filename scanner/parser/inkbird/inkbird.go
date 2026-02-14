@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"hash/fnv"
 
+	pc "github.com/avanha/pmaas-plugin-bluetooth/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/scanner/common"
 	dbus "github.com/godbus/dbus/v5"
-	pc "pmaas.io/plugins/bluetooth/common"
-	"pmaas.io/plugins/bluetooth/scanner/common"
 )
 
 func Parse(dev *common.ObservedDevice, changedPropertyName string, newPropertyValue interface{}) (bool, common.ParseResult) {

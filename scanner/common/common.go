@@ -5,7 +5,7 @@ import (
 	"github.com/muka/go-bluetooth/bluez"
 	"github.com/muka/go-bluetooth/bluez/profile/device"
 
-	pc "pmaas.io/plugins/bluetooth/common"
+	pc "github.com/avanha/pmaas-plugin-bluetooth/common"
 )
 
 type ParseResult struct {
