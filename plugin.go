@@ -273,7 +273,7 @@ func (p *plugin) Start() {
 	fmt.Printf("%s Started...\n", *p)
 }
 
-func (p *plugin) Stop() {
+func (p *plugin) Stop() chan func() {
 	fmt.Printf("%s Stopping...\n", *p)
 
 	if p.state.scanCancelFunc != nil {
@@ -286,6 +286,8 @@ func (p *plugin) Stop() {
 	}
 
 	fmt.Printf("%s Stopped\n", *p)
+
+	return p.state.container.ClosedCallbackChannel()
 }
 
 func (p *plugin) run(ctx context.Context, runDone chan error) {
