@@ -1,9 +1,9 @@
 module github.com/avanha/pmaas-plugin-bluetooth
 
-go 1.25
+go 1.26
 
 require (
-	github.com/avanha/pmaas-spi v0.0.2
+	github.com/avanha/pmaas-spi v0.0.5
 	github.com/muka/go-bluetooth v0.0.0-20240701044517-04c4f09c514e
 )
 
