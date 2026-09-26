@@ -291,6 +291,14 @@ func (p *plugin) Stop() chan func() {
 }
 
 func (p *plugin) run(ctx context.Context, runDone chan error) {
+	// Closed only once this whole function actually returns, i.e. after the deregistration loop below
+	// has run to completion — not as soon as the scan loop below notices ctx is done. Stop()'s
+	// scanCancelFunc blocks on <-runDone, and PMAAS treats Stop() returning as "this plugin is
+	// completely finished"; closing runDone any earlier let Stop() return (and PMAAS start tearing down
+	// EntityManager/EventManager) while this goroutine was still concurrently calling DeregisterEntity
+	// for every remaining device — a race that could panic EntityManager with "send on closed channel".
+	defer close(runDone)
+
 	// Register any pre-configured devices
 	for _, dev := range p.state.devices {
 		p.registerDevice(dev)
@@ -317,7 +325,6 @@ func (p *plugin) run(ctx context.Context, runDone chan error) {
 
 		if !wait(ctx, pause*time.Second) {
 			fmt.Printf("wait returned false, completing run\n")
-			close(runDone)
 			break
 		}
 	}
