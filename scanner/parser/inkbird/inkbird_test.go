@@ -71,16 +71,31 @@ func TestParse_TwoRecordsNewSimultaneously_NotParsed(t *testing.T) {
 		t.Errorf("Parse of two simultaneously new records succeeded: %+v", result)
 	}
 
+	// A skipped parse must report BatteryLevel as -1 ("no reading"), not 0 - otherwise a caller
+	// that only checks BatteryLevel != -1 would mistake this for a real 0% reading and clobber the
+	// device's last-known-good battery level with it.
+	if result.BatteryLevel != -1 {
+		t.Errorf("Skipped parse reported BatteryLevel %d, want -1 (no reading)", result.BatteryLevel)
+	}
+
 	success, result = Parse(&dev, "ManufacturerData", manufacturerData2)
 
 	if success == true {
 		t.Errorf("Second Parse of duplicate data succeded")
 	}
 
+	if result.BatteryLevel != -1 {
+		t.Errorf("Skipped parse reported BatteryLevel %d, want -1 (no reading)", result.BatteryLevel)
+	}
+
 	success, result = Parse(&dev, "ManufacturerData", manufacturerData2)
 
 	if success == true {
 		t.Errorf("Third Parse of duplicate data succeded")
+	}
+
+	if result.BatteryLevel != -1 {
+		t.Errorf("Skipped parse reported BatteryLevel %d, want -1 (no reading)", result.BatteryLevel)
 	}
 }
 

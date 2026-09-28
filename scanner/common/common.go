@@ -9,11 +9,15 @@ import (
 )
 
 type ParseResult struct {
-	BatteryLevel    int `default:"-1"`
+	// BatteryLevel is the parsed battery percentage, or -1 if this parse didn't produce a battery
+	// reading. There's no reflection-based defaults library in this codebase, so a bare
+	// ParseResult{} literal leaves this at Go's zero value, 0 - a real-looking (but wrong) reading.
+	// Always build "no reading" results from EmptyParseResult rather than a zero-value literal.
+	BatteryLevel    int
 	EnvironmentData pc.EnvironmentData
 }
 
-var EmptyParseResult ParseResult = ParseResult{}
+var EmptyParseResult ParseResult = ParseResult{BatteryLevel: -1}
 
 type DataParserFunc func(*ObservedDevice, string, interface{}) (bool, ParseResult)
 

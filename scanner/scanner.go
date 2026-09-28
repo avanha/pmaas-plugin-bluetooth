@@ -44,8 +44,11 @@ type ScanEvent struct {
 	UUIDs              []string
 	ManufacturerData   map[uint16]interface{}
 	ServiceData        map[string]interface{}
-	BatteryLevel       int `default:"-1"`
-	EnvironmentData    pc.EnvironmentData
+	// BatteryLevel is -1 unless this event actually carries a battery reading - see
+	// common.ParseResult.BatteryLevel's doc comment for why every construction site here sets it
+	// explicitly instead of leaving it at Go's zero value.
+	BatteryLevel    int
+	EnvironmentData pc.EnvironmentData
 }
 
 type StartScanResult struct {
@@ -239,7 +242,7 @@ func (p *Scanner) handleDiscoveryEvent(
 			}
 			p.chooseParser(&observedDevice)
 			var parseOk bool = false
-			var parseResult common.ParseResult
+			var parseResult common.ParseResult = common.EmptyParseResult
 
 			if observedDevice.ParseFunc != nil {
 				parseOk, parseResult = observedDevice.ParseFunc(
@@ -265,6 +268,7 @@ func (p *Scanner) handleDiscoveryEvent(
 				UUIDs:              observedDevice.Device.Properties.UUIDs,
 				ManufacturerData:   observedDevice.Device.Properties.ManufacturerData,
 				ServiceData:        observedDevice.Device.Properties.ServiceData,
+				BatteryLevel:       -1,
 			}
 
 			if parseOk {
@@ -390,6 +394,7 @@ func newScanEvent(eventType string, evt *devicePropertyChanged) *ScanEvent {
 		DeviceType:         evt.device.Type,
 		DeviceMakeAndModel: evt.device.MakeAndModel,
 		Address:            evt.device.Address,
+		BatteryLevel:       -1,
 	}
 }
 
