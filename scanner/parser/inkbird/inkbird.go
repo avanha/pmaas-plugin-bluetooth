@@ -29,6 +29,8 @@ func Parse(dev *common.ObservedDevice, changedPropertyName string, newPropertyVa
 	var success bool = false
 	var result common.ParseResult = common.EmptyParseResult
 	var oldRecords, newRecords int
+	var newTag uint16
+	var newBytes []byte
 
 	// Inkbird stores the LE 16-bit integer after the length, where the tag is - so the tag is the temperature.
 
@@ -38,7 +40,7 @@ func Parse(dev *common.ObservedDevice, changedPropertyName string, newPropertyVa
 		if bytesOk && len(bytes) == 7 {
 			// Bluez accumulates manufacturer data over the course of a discovery session.  Since the temperature
 			// is stored in the tag, the number of tags grows, and it becomes impossible to know what is new, and
-			// what was received previosuly.  To work around it, we'll hash the data track previously seen values
+			// what was received previously.  To work around it, we'll hash the data and track previously seen values
 			// and ignore previously seen values.  However, that's still not foolproof since a new reading may
 			// repeat the same values.  We'll need to stop and start the discovery session periodically to flush
 			// the cache.
@@ -51,10 +53,7 @@ func Parse(dev *common.ObservedDevice, changedPropertyName string, newPropertyVa
 			} else {
 				newRecords = newRecords + 1
 				processedData[dataHash] = true
-
-				if !success {
-					success, result = decode(tag, bytes)
-				}
+				newTag, newBytes = tag, bytes
 			}
 		}
 	}
@@ -62,6 +61,20 @@ func Parse(dev *common.ObservedDevice, changedPropertyName string, newPropertyVa
 	fmt.Printf("Inkbird Parser saw %d old %s and %d new %s\n",
 		oldRecords, getProperNounForRecord(oldRecords),
 		newRecords, getProperNounForRecord(newRecords))
+
+	if newRecords == 1 {
+		// Exactly one previously-unseen record: unambiguous, decode it.
+		success, result = decode(newTag, newBytes)
+	} else if newRecords > 1 {
+		// More than one previously-unseen record showed up in the same call - this happens on cold start
+		// (the accumulated map already held stale entries before we ever saw this device) or if we fell
+		// behind and coalesced multiple beacons. Map iteration order is randomized, so there's no reliable
+		// way to tell which of these is actually the most recent beacon; guessing risks reporting a stale
+		// reading (e.g. a garbage battery value from the device's first advertisement after power-on). All
+		// of them are now marked as seen, so just wait for the next, unambiguous beacon instead of guessing.
+		fmt.Printf("Inkbird Parser saw %d simultaneously new records; can't tell which is most recent, skipping decode\n",
+			newRecords)
+	}
 
 	return success, result
 }

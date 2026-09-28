@@ -44,7 +44,11 @@ func TestParse_NegativeTemperature_Succeeds(t *testing.T) {
 	validateParseResult(t, success, result, float32(-2.5), float32(48.45), 74)
 }
 
-func TestParse_DuplicateRecord_NotParsed(t *testing.T) {
+// Tests that when a single call sees two never-before-seen records at once (e.g. cold start against an
+// already-accumulated ManufacturerData map), the parser doesn't guess which one is most recent - Go's map
+// iteration order is randomized, so picking either one non-deterministically would risk reporting a stale
+// reading. Instead it marks both seen and defers decoding to the next, unambiguous call.
+func TestParse_TwoRecordsNewSimultaneously_NotParsed(t *testing.T) {
 	dev := common.ObservedDevice{}
 
 	temp1 := int(5.36 * 100)
@@ -61,12 +65,11 @@ func TestParse_DuplicateRecord_NotParsed(t *testing.T) {
 	manufacturerData2 := make(map[uint16]any)
 	manufacturerData2[tag1] = data1
 
-	manufacturerData3 := make(map[uint16]any)
-	manufacturerData3[tag2] = data2
-
 	success, result := Parse(&dev, "ManufacturerData", manufacturerData1)
 
-	validateParseResult(t, success, result, float32(5.36), float32(48.45), 74)
+	if success == true {
+		t.Errorf("Parse of two simultaneously new records succeeded: %+v", result)
+	}
 
 	success, result = Parse(&dev, "ManufacturerData", manufacturerData2)
 
