@@ -195,11 +195,15 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 // Implementation of spi.IPMAASPlugin
 var _ spi.IPMAASPlugin = (*plugin)(nil)
 
+func (p *plugin) ShortName() string {
+	return "bluetooth"
+}
+
 func (p *plugin) Init(container spi.IPMAASContainer) {
 	p.state.container = container
 	container.ProvideContentFS(&contentFS, "content")
 	container.EnableStaticContent("static")
-	container.AddRoute("/plugins/bluetooth/", p.HandleHttpList)
+	container.AddRoute("", p.HandleHttpList)
 }
 
 var renderListOptions = spi.RenderListOptions{Title: "Bluetooth Devices"}
