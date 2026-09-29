@@ -14,3 +14,5 @@ require (
 	github.com/sirupsen/logrus v1.6.0 // indirect
 	golang.org/x/sys v0.0.0-20200728102440-3e129f6d46b1 // indirect
 )
+
+replace github.com/avanha/pmaas-spi => ../pmaas-spi
