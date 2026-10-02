@@ -179,6 +179,7 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 					LastUpdateTime: now,
 				},
 				SensorData: environmental.SensorData{
+					HasData:        true,
 					Temperature:    25.73,
 					HasHumidity:    true,
 					Humidity:       45.25,
@@ -494,6 +495,7 @@ func (p *plugin) handleDeviceDiscovered(evt *scanner.ScanEvent) {
 
 	if !evt.EnvironmentData.IsEmpty() {
 		dev.SensorData = environmental.SensorData{
+			HasData:        true,
 			Temperature:    evt.EnvironmentData.Temperature,
 			HasHumidity:    evt.EnvironmentData.Humidity >= 0,
 			Humidity:       evt.EnvironmentData.Humidity,
@@ -605,6 +607,7 @@ func (p *plugin) handleEnvironmentDataUpdated(evt *scanner.ScanEvent) bool {
 	dev.LastEventType = evt.Type
 	dev.LastUpdateTime = evt.EventTime
 	dev.SensorData = environmental.SensorData{
+		HasData:        true,
 		Temperature:    evt.EnvironmentData.Temperature,
 		HasHumidity:    evt.EnvironmentData.Humidity >= 0,
 		Humidity:       evt.EnvironmentData.Humidity,
