@@ -278,30 +278,44 @@ func (p *plugin) Start() {
 	fmt.Printf("%s Started...\n", *p)
 }
 
+// Stop runs on the plugin goroutine, which it must not block: cancelling the run and waiting for it to
+// finish takes as long as the run's own teardown, and nothing else can run on this goroutine meanwhile.
+// So the wait happens on a background goroutine, and the channel Stop returns is closed once it's done,
+// which is how the core is told the plugin has completely finished.
 func (p *plugin) Stop() chan func() {
 	fmt.Printf("%s Stopping...\n", *p)
 
-	if p.state.scanCancelFunc != nil {
-		fmt.Println("Stopping run...")
-		scanCancelFunc := p.state.scanCancelFunc
-		p.state.scanCancelFunc = nil
+	// Take the cancel function out of the plugin's state, so that stopping the run is the job of
+	// exactly one caller.
+	scanCancelFunc := p.state.scanCancelFunc
+	p.state.scanCancelFunc = nil
 
-		fmt.Println("Waiting for run to stop...")
-		scanCancelFunc()
+	// The run was never started, or has already been stopped: there's nothing to wait for.
+	if scanCancelFunc == nil {
+		return p.state.container.ClosedCallbackChannel()
 	}
 
-	fmt.Printf("%s Stopped\n", *p)
+	done := make(chan func())
 
-	return p.state.container.ClosedCallbackChannel()
+	go func() {
+		defer close(done)
+
+		fmt.Println("Stopping run, and waiting for it to finish...")
+		scanCancelFunc()
+		fmt.Printf("%s Stopped\n", *p)
+	}()
+
+	return done
 }
 
 func (p *plugin) run(ctx context.Context, runDone chan error) {
 	// Closed only once this whole function actually returns, i.e. after the deregistration loop below
 	// has run to completion — not as soon as the scan loop below notices ctx is done. Stop()'s
-	// scanCancelFunc blocks on <-runDone, and PMAAS treats Stop() returning as "this plugin is
-	// completely finished"; closing runDone any earlier let Stop() return (and PMAAS start tearing down
-	// EntityManager/EventManager) while this goroutine was still concurrently calling DeregisterEntity
-	// for every remaining device — a race that could panic EntityManager with "send on closed channel".
+	// scanCancelFunc blocks on <-runDone, and PMAAS treats the channel Stop() returns being closed as
+	// "this plugin is completely finished"; closing runDone any earlier let that happen (and PMAAS
+	// start tearing down EntityManager/EventManager) while this goroutine was still concurrently
+	// calling DeregisterEntity for every remaining device — a race that could panic EntityManager
+	// with "send on closed channel".
 	defer close(runDone)
 
 	// Register any pre-configured devices
