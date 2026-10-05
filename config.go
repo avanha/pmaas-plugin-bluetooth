@@ -22,7 +22,7 @@ func NewPluginConfig() PluginConfig {
 func (c *PluginConfig) AddThermometer(address string, name string) {
 	existing, ok := c.devices[address]
 	if ok {
-		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", address, &existing.LocalName))
+		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", address, existing.LocalName))
 	}
 
 	c.devices[address] = &device{

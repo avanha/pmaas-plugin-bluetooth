@@ -280,7 +280,20 @@ func (p *Scanner) handleDiscoveryEvent(
 			fmt.Printf("Failed to get device interface for path %s: %s\n", ev.Path, err)
 		}
 	} else {
-		fmt.Printf("Received %s event, path: %s\n", ev.Type, ev.Path)
+		fmt.Printf("Received %s event, path: %s\n", deviceActionName(ev.Type), ev.Path)
+	}
+}
+
+// deviceActionName names a device discovery action for logging. go-bluetooth's DeviceActions is a bare
+// uint8 with no String method, so formatting it directly prints something like "%!s(adapter.DeviceActions=0)".
+func deviceActionName(action adapter.DeviceActions) string {
+	switch action {
+	case adapter.DeviceAdded:
+		return "device added"
+	case adapter.DeviceRemoved:
+		return "device removed"
+	default:
+		return fmt.Sprintf("unknown device action (%d)", uint8(action))
 	}
 }
 

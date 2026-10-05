@@ -255,7 +255,7 @@ func ChoosePublishedDeviceName(dev *device) string {
 }
 
 func (p *plugin) Start() {
-	fmt.Printf("%s Starting...\n", *p)
+	fmt.Printf("%T Starting...\n", *p)
 
 	p.state.container.RegisterEntityRenderer(
 		reflect.TypeOf((*publishedDevice)(nil)).Elem(), p.bluetoothDeviceRendererFactory)
@@ -269,13 +269,13 @@ func (p *plugin) Start() {
 		err := <-runDone
 
 		if err == nil {
-			fmt.Printf("%s run completed\n", *p)
+			fmt.Printf("%T run completed\n", *p)
 		} else {
-			fmt.Printf("%s run completed with error: %s\n", *p, err)
+			fmt.Printf("%T run completed with error: %s\n", *p, err)
 		}
 	}
 
-	fmt.Printf("%s Started...\n", *p)
+	fmt.Printf("%T Started...\n", *p)
 }
 
 // Stop runs on the plugin goroutine, which it must not block: cancelling the run and waiting for it to
@@ -283,7 +283,7 @@ func (p *plugin) Start() {
 // So the wait happens on a background goroutine, and the channel Stop returns is closed once it's done,
 // which is how the core is told the plugin has completely finished.
 func (p *plugin) Stop() chan func() {
-	fmt.Printf("%s Stopping...\n", *p)
+	fmt.Printf("%T Stopping...\n", *p)
 
 	// Take the cancel function out of the plugin's state, so that stopping the run is the job of
 	// exactly one caller.
@@ -302,7 +302,7 @@ func (p *plugin) Stop() chan func() {
 
 		fmt.Println("Stopping run, and waiting for it to finish...")
 		scanCancelFunc()
-		fmt.Printf("%s Stopped\n", *p)
+		fmt.Printf("%T Stopped\n", *p)
 	}()
 
 	return done
