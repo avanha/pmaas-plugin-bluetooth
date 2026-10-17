@@ -1,7 +1,7 @@
 # Bluetooth: sources, and the plugin that makes sense of them
 
-Status: 2026-10-17. Phases 1 to 3 are built and tested, and not yet released or run on the Pi: the contract in
-`pmaas-spi/bluetooth`, the parsers, and the BlueZ source with this plugin consuming. The proxy source and buttons are not. Where this
+Status: 2026-10-17. Phases 1 to 4 are built and tested, and not yet released or run on the Pi: the contract in
+`pmaas-spi/bluetooth`, the parsers, the BlueZ source, and the ESPHome proxy source, with this plugin consuming. Buttons are not. Where this
 spec and that package differ, the package is right: `Fields` is embedded in `AdvertisementEvent`, the coalescer returns a
 `Verdict` and the rule that matched, and `ManufacturerOf` builds a rule's optional company ID.
 
@@ -268,6 +268,9 @@ Each is shippable on its own.
    Differences from the plan: the page does not yet show sources or a best source; a reading seen by two sources is not
    de-duplicated (harmless for sensors, which are idempotent; it matters for buttons).
 4. **ESPHome proxy source.** Raw advertisements to events, scan mode, source entity. Merging across sources.
+   *Done, unreleased, and not yet run against the real proxy through the plugin (the captures were).* Differences from the plan:
+   each proxy has its own `Coalescer` over one shared `bluetooth.Interests`, so every proxy that hears a sensor reports it;
+   a truncated final structure is trimmed away, not an error.
 5. **Buttons.** The press event and its parser, once the BC011's behaviour is captured; the event-driven automation trigger
    is its own piece of work.
 
