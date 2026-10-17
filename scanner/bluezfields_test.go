@@ -111,3 +111,38 @@ func TestParseDevice_AGoveeIsNotHeldToThatBecauseItsReadingIsNotInTheKey(t *test
 		}
 	}
 }
+
+// From the Inkbird parser's own tests before it moved: records that arrive together, and a skipped parse is not a battery of 0.
+func TestParseDevice_TwoNewRecordsAtOnceAreNotGuessedAmongAndAreNotParsedLater(t *testing.T) {
+	dev := deviceWith(parser.Inkbird, nil)
+
+	first := []byte{237, 18, 0, 153, 47, 74, 8}
+	second := []byte{236, 18, 0, 153, 47, 74, 8}
+
+	both := map[uint16]interface{}{536: dbus.MakeVariant(first), 537: dbus.MakeVariant(second)}
+	one := map[uint16]interface{}{536: dbus.MakeVariant(first)}
+
+	for name, m := range map[string]map[uint16]interface{}{"both at once": both, "one of them again": one, "and again": one} {
+		ok, result := parseDevice(dev, "ManufacturerData", m)
+		if ok || result.BatteryLevel != -1 {
+			t.Errorf("%s: %v %+v", name, ok, result)
+		}
+	}
+}
+
+func TestParseDevice_TheSameTemperatureWithADifferentHumidityIsNew(t *testing.T) {
+	dev := deviceWith(parser.Inkbird, nil)
+
+	first := map[uint16]interface{}{536: dbus.MakeVariant([]byte{237, 18, 0, 153, 47, 74, 8})}
+	second := map[uint16]interface{}{536: dbus.MakeVariant([]byte{236, 18, 0, 153, 47, 74, 8})}
+
+	ok, result := parseDevice(dev, "ManufacturerData", first)
+	if !ok || result.EnvironmentData.Humidity != 48.45 {
+		t.Fatalf("%v %+v", ok, result)
+	}
+
+	ok, result = parseDevice(dev, "ManufacturerData", second)
+	if !ok || result.EnvironmentData.Humidity != 48.44 {
+		t.Errorf("%v %+v", ok, result)
+	}
+}

@@ -201,3 +201,33 @@ func TestRules_AreValidAndWantTheirOwnDevicesAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// The cases the Inkbird parser had tests for before it moved here, in the same numbers.
+func TestInkbird_PositiveZeroAndNegativeTemperatures(t *testing.T) {
+	data := []byte{237, 18, 0, 153, 47, 74, 8} // humidity 48.45, battery 74
+
+	for name, c := range map[string]struct {
+		tag  uint16
+		want float32
+	}{
+		"positive": {uint16(int(5.36 * 100)), 5.36},
+		"zero":     {0, 0},
+		"negative": {0xff06, -2.5}, // -250 as an unsigned 16 bit number
+	} {
+		result, ok := Inkbird.Parse(bluetooth.Fields{ManufacturerData: map[uint16][]byte{c.tag: data}})
+		if !ok || result.Environment.Temperature != c.want || result.Environment.Humidity != 48.45 || result.BatteryLevel != 74 {
+			t.Errorf("%s: %v %+v", name, ok, result)
+		}
+	}
+}
+
+func TestInkbird_TheSameTemperatureWithADifferentHumidityIsADifferentReading(t *testing.T) {
+	tag := uint16(int(5.36 * 100))
+
+	first, _ := Inkbird.Parse(bluetooth.Fields{ManufacturerData: map[uint16][]byte{tag: {237, 18, 0, 153, 47, 74, 8}}})
+	second, _ := Inkbird.Parse(bluetooth.Fields{ManufacturerData: map[uint16][]byte{tag: {236, 18, 0, 153, 47, 74, 8}}})
+
+	if first.Environment.Humidity != 48.45 || second.Environment.Humidity != 48.44 {
+		t.Errorf("humidity %v and %v", first.Environment.Humidity, second.Environment.Humidity)
+	}
+}
