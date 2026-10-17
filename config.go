@@ -12,12 +12,21 @@ import (
 type PluginConfig struct {
 	// EnableTestDevices adds a thermometer that doesn't exist, to see how one is shown.
 	EnableTestDevices bool
-	devices           map[string]*device
+
+	// ListAllDevices is whether to keep a list of every named device the sources hear, wanted or not, and show it on the
+	// page: it is how to find the address of one to configure. The default is true. A device that is not wanted costs a
+	// sighting a minute while it is heard, and is forgotten when many more have been heard, or sooner if its address changes
+	// (a phone's does about every quarter of an hour). Turn it off and only what the parsers recognise and what is configured
+	// is listed.
+	ListAllDevices bool
+
+	devices map[string]*device
 }
 
 func NewPluginConfig() PluginConfig {
 	return PluginConfig{
 		EnableTestDevices: false,
+		ListAllDevices:    true,
 		devices:           make(map[string]*device),
 	}
 }

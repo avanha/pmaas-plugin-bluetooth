@@ -12,7 +12,7 @@
         {{end}}
     </div>
     <div class="info-row">
-        <div class="address">{{.Address | html}}</div>
+        <div class="address">{{.Address | html}}{{if .Temporary}} <span class="temporary" title="This device changes its address from time to time, so it is not one to configure by">(changes address)</span>{{end}}</div>
         <div class="timestamp">
             <div class="label">Updated</div>
             <div class="value">{{RelativeTime .LastUpdateTime}}</div>

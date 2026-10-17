@@ -64,6 +64,10 @@ type device struct {
 	LastUpdateTime      time.Time
 	LastEventType       string
 
+	// temporary is that the address is one the device will change (see bluetooth.IsTemporaryAddress), so it is forgotten
+	// sooner than a device that keeps its own.
+	temporary bool
+
 	// known is the name and services advertised so far, merged: the name comes in one advertisement and the reading in another.
 	// It is what the device is recognised by. Readings are not kept: for some devices each is a new key.
 	known bluetooth.Fields
@@ -91,6 +95,9 @@ type publishedDevice struct {
 	Name           string
 	RSSIData       environmental.RSSIData
 	LastUpdateTime time.Time
+
+	// Temporary is that the address is one the device will change, so it is not one to configure a device by.
+	Temporary bool
 }
 
 func (d publishedDevice) SortKey() string {
@@ -126,8 +133,11 @@ type plugin struct {
 	// configured are the addresses the assembly named, which the sources are asked for whatever else is wanted.
 	configured []string
 
-	advertisementReceiver, clockReceiver int
-	receiversRegistered                  bool
+	// receivers are the handles of the event receivers registered, to be given back when the plugin stops.
+	receivers []int
+
+	// listAll is whether to ask the sources for sightings of every device they hear.
+	listAll bool
 
 	now func() time.Time
 }
@@ -137,7 +147,7 @@ type BluetoothPlugin interface {
 }
 
 func NewPlugin(config PluginConfig) BluetoothPlugin {
-	instance := &plugin{devices: make(map[string]*device), now: time.Now}
+	instance := &plugin{devices: make(map[string]*device), now: time.Now, listAll: config.ListAllDevices}
 
 	for address, dev := range config.devices {
 		instance.devices[address] = &device{
@@ -234,6 +244,7 @@ func (p *plugin) listItems() []interface{} {
 				Name:           ChoosePublishedDeviceName(device),
 				RSSIData:       device.RSSIData,
 				LastUpdateTime: device.LastUpdateTime,
+				Temporary:      device.temporary,
 			}
 		}
 
@@ -275,22 +286,26 @@ func (p *plugin) Start() {
 		}
 	}
 
-	var err error
+	// The advertisements the sources forward, the sightings of the devices they hear that nobody wants, and the minute, when
+	// what is wanted is said again and the devices that have gone are let go.
+	for _, r := range []struct {
+		predicate events.EventPredicate
+		receiver  events.EventReceiver
+		what      string
+	}{
+		{bluetooth.AdvertisementPredicate, p.onAdvertisement, "advertisements"},
+		{bluetooth.SightingPredicate, p.onSighting, "sightings"},
+		{isMinuteChanged, p.onMinute, "the clock"},
+	} {
+		handle, err := p.container.RegisterEventReceiver(r.predicate, r.receiver)
+		if err != nil {
+			fmt.Printf("%T unable to listen for %s: %v\n", p, r.what, err)
 
-	p.advertisementReceiver, err = p.container.RegisterEventReceiver(bluetooth.AdvertisementPredicate, p.onAdvertisement)
-	if err != nil {
-		fmt.Printf("%T unable to listen for advertisements: %v\n", p, err)
+			continue
+		}
 
-		return
+		p.receivers = append(p.receivers, handle)
 	}
-
-	// The minute is when what is wanted is said again: a source that starts later, or restarts, catches up within one.
-	p.clockReceiver, err = p.container.RegisterEventReceiver(isMinuteChanged, p.onMinute)
-	if err != nil {
-		fmt.Printf("%T unable to listen for the clock, so what is wanted is only said once: %v\n", p, err)
-	}
-
-	p.receiversRegistered = true
 
 	p.publishInterest()
 
@@ -302,18 +317,14 @@ func (p *plugin) Start() {
 func (p *plugin) Stop() chan func() {
 	fmt.Printf("%T Stopping...\n", p)
 
-	if p.receiversRegistered {
-		p.receiversRegistered = false
-
-		if err := p.container.DeregisterEventReceiver(p.advertisementReceiver); err != nil {
-			fmt.Printf("%T unable to stop listening for advertisements: %v\n", p, err)
-		}
-
-		if p.clockReceiver != 0 {
-			if err := p.container.DeregisterEventReceiver(p.clockReceiver); err != nil {
-				fmt.Printf("%T unable to stop listening for the clock: %v\n", p, err)
+	if len(p.receivers) > 0 {
+		for _, handle := range p.receivers {
+			if err := p.container.DeregisterEventReceiver(handle); err != nil {
+				fmt.Printf("%T unable to stop listening: %v\n", p, err)
 			}
 		}
+
+		p.receivers = nil
 
 		// Nothing is wanted any more.
 		if err := bluetooth.PublishInterest(p.container, p.ShortName(), nil, false); err != nil {
@@ -345,6 +356,7 @@ func isMinuteChanged(eventInfo *events.EventInfo) bool {
 
 func (p *plugin) onMinute(*events.EventInfo) error {
 	p.publishInterest()
+	p.ageDevices(p.now())
 
 	return nil
 }

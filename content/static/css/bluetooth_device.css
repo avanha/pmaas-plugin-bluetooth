@@ -49,3 +49,7 @@
 .entity-bluetooth-device .info-row .timestamp .label::after {
     content: ":";
 }
+.entity-bluetooth-device .info-row .address .temporary {
+    color: grey;
+    font-size: 0.85em;
+}

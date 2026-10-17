@@ -302,6 +302,21 @@ and an accept list of known fixed addresses so the controller drops everything e
 (`setcap` on each deploy) and the adapter to itself, so it replaces `pmaas-plugin-bluez` rather than running beside it. It
 would be one more source, with no change to the consumer. Not planned.
 
+## Sightings: the list of devices around
+
+(Added after phase 4.) Dropping what is not wanted at the source meant the page could no longer be used to find the address of a
+device to configure, as it could when the plugin saw everything BlueZ did. So a consumer can also ask for *sightings*
+(`InterestEvent.Sightings`, an interval): a source then broadcasts a `SightingEvent` for a device it hears that nobody wants
+the advertisements of, at most that often for each device and at once when its name is first learned. A sighting says the
+name, the services and the companies seen over time (so who made it), the signal and the time, and nothing of what the
+device said. A `SightingTracker`, one for each place a source hears from, decides when. The plugin turns a sighting into an
+advertisement with nothing to decode and ingests it, so a device is merged, identified, given a per-source signal and
+aged exactly as one that is forwarded, but it is never registered or announced unless a parser recognises it.
+
+A random address that is not static (its top two bits are not `11`) is private and changes about every fifteen minutes
+(`bluetooth.IsTemporaryAddress`). Such a device is marked on the page, is dropped after ten minutes unheard, and is the
+first to go when the hundred-device limit is reached. A named device from the configuration is never dropped.
+
 ## Open questions
 
 1. **The BC011.** What its button actually sends, and whether the beacon only advertises when pressed. Needs a capture with

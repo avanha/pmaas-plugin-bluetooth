@@ -13,6 +13,15 @@ conf.AddThermometer("A4:C1:38:CC:E2:F0", "Garage") // optional: name a device yo
 coreConfig.AddPlugin(bluetooth.NewPlugin(conf), config.PluginConfig{})
 ```
 
+**Finding a device to configure.** The page lists every *named* device the sources hear, not only the ones that are
+recognised or configured, with its address, signal and when it was last heard, which is how to find the address to give to
+`AddThermometer`. The sources can't forward everything, so for a device that isn't wanted they send a *sighting* (the name, the
+services and who made it, no data) at most once a minute while it is heard, and at once when its name is first learned.
+Devices are kept until more than a hundred are held, when the one heard from longest ago goes. A device whose address is
+about to change anyway (a private random address: phones, watches, trackers, which change theirs every quarter of an hour or
+so) is marked "changes address" on the page, is let go after ten minutes without being heard, and goes first when room is
+needed, so the list isn't a litter of dead phones. Set `ListAllDevices = false` to turn the list off.
+
 It tells the sources what it wants, with an `InterestEvent` (what the parsers recognise, and every device named in the
 configuration), so that the many advertisements nobody wants are dropped where they are heard. Nothing is forwarded until it
 has said so, so a source added without this plugin does nothing.

@@ -248,12 +248,12 @@ func TestStart_RegistersWhatWasConfiguredListensAndSaysWhatIsWanted(t *testing.T
 		t.Errorf("states %+v", states)
 	}
 
-	if len(f.container.receivers) != 2 {
+	if len(f.container.receivers) != 3 {
 		t.Fatalf("%d receivers", len(f.container.receivers))
 	}
 
 	interests := f.container.interests()
-	if len(interests) != 1 || interests[0].Owner != "bluetooth" || !interests[0].ActiveScan {
+	if len(interests) != 1 || interests[0].Owner != "bluetooth" || !interests[0].ActiveScan || interests[0].Sightings != time.Minute {
 		t.Fatalf("interests %+v", interests)
 	}
 
@@ -565,5 +565,217 @@ func TestRelativeTime(t *testing.T) {
 		if got := RelativeTime(time.Now().Add(-ago)); got != want {
 			t.Errorf("%v ago: %q, want %q", ago, got, want)
 		}
+	}
+}
+
+func (f *fixture) sight(source string, address string, kind bluetooth.AddressType, name string, rssi int) {
+	f.t.Helper()
+
+	f.container.deliver(bluetooth.SightingEvent{Source: source, Address: address, AddressType: kind, RSSI: rssi, Time: f.clock, LocalName: name})
+}
+
+const (
+	phoneAddress  = "44:DC:FA:B6:5B:00" // resolvable private: changes
+	beaconAddress = "C3:00:00:00:00:01" // static random: stays
+)
+
+func TestSightings_AreAskedForByDefaultAndNotWhenTheListIsTurnedOff(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	if got := f.container.interests()[0].Sightings; got != time.Minute {
+		t.Errorf("sightings %v", got)
+	}
+
+	config := NewPluginConfig()
+	config.ListAllDevices = false
+	quiet := newFixture(t, config)
+
+	if got := quiet.container.interests()[0].Sightings; got != 0 {
+		t.Errorf("sightings %v with the list turned off", got)
+	}
+}
+
+func TestSightings_ADeviceNobodyWantsIsListedByNameWithItsSignalAndTimeButNotRegistered(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	f.sight("src", beaconAddress, bluetooth.AddressRandom, "Tag", -72)
+
+	if len(f.container.entities) != 0 || len(f.container.states()) != 0 {
+		t.Fatalf("entities %v, states %v", f.container.entities, f.container.states())
+	}
+
+	d := f.device(beaconAddress)
+	if d.ReportedName != "Tag" || d.RSSIData.RSSI != -72 || d.AddressType != "random" || d.temporary || !d.LastUpdateTime.Equal(epoch) {
+		t.Errorf("device %+v", d)
+	}
+
+	f.plugin.HandleHttpList(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if len(f.container.listed) != 1 {
+		t.Fatalf("listed %d", len(f.container.listed))
+	}
+
+	if p, ok := f.container.listed[0].(publishedDevice); !ok || p.Name != "Tag" || p.Address != beaconAddress || p.Temporary || p.RSSIData.RSSI != -72 {
+		t.Errorf("listed %+v", f.container.listed[0])
+	}
+}
+
+func TestSightings_ADeviceWithNoNameIsKeptButNotListedUntilItHasOne(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	f.sight("src", beaconAddress, bluetooth.AddressRandom, "", -72)
+	f.plugin.HandleHttpList(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if len(f.container.listed) != 0 {
+		t.Fatalf("listed %d", len(f.container.listed))
+	}
+
+	f.advance(time.Minute)
+	f.sight("src", beaconAddress, bluetooth.AddressRandom, "Tag", -70)
+	f.plugin.HandleHttpList(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if len(f.container.listed) != 1 {
+		t.Errorf("listed %d", len(f.container.listed))
+	}
+}
+
+func TestSightings_ADeviceWithAnAddressThatChangesIsSaidToBe(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	f.sight("src", phoneAddress, bluetooth.AddressRandom, "Phone", -60)
+	f.sight("src", goveeAddress, bluetooth.AddressPublic, "Thing", -60)
+
+	if !f.device(phoneAddress).temporary || f.device(goveeAddress).temporary {
+		t.Error("temporary")
+	}
+
+	f.plugin.HandleHttpList(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+
+	for _, item := range f.container.listed {
+		p := item.(publishedDevice)
+		if p.Temporary != (p.Address == phoneAddress) {
+			t.Errorf("%s: temporary %v", p.Address, p.Temporary)
+		}
+	}
+}
+
+func TestSightings_ASightingOfSomethingTheParsersRecogniseMakesItAThermometer(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	f.container.deliver(bluetooth.SightingEvent{
+		Source: "src", Address: goveeAddress, AddressType: bluetooth.AddressPublic, RSSI: -60, Time: epoch,
+		LocalName: "GVH5075_E2F0", ServiceUUIDs: []string{bluetooth.UUID16(0xec88)},
+	})
+
+	if f.container.entities[goveeAddress] != IWirelessThermometerType {
+		t.Errorf("entities %v", f.container.entities)
+	}
+}
+
+func TestAging_ADeviceWithAnAddressThatChangesIsLetGoAfterTenMinutesWithoutBeingHeard(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	f.sight("src", phoneAddress, bluetooth.AddressRandom, "Phone", -60)
+	f.sight("src", beaconAddress, bluetooth.AddressRandom, "Tag", -60)
+
+	f.advance(9 * time.Minute)
+	f.container.deliver(clock.MinuteChangedEvent{Time: f.clock})
+
+	if len(f.plugin.devices) != 2 {
+		t.Fatalf("%d devices after nine minutes", len(f.plugin.devices))
+	}
+
+	// The tag is heard again; the phone is not.
+	f.advance(time.Minute)
+	f.sight("src", beaconAddress, bluetooth.AddressRandom, "Tag", -60)
+	f.container.deliver(clock.MinuteChangedEvent{Time: f.clock})
+
+	if _, kept := f.plugin.devices[phoneAddress]; kept || len(f.plugin.devices) != 1 {
+		t.Errorf("devices %v", f.plugin.devices)
+	}
+
+	// The one that keeps its address stays, however long.
+	f.advance(24 * time.Hour)
+	f.container.deliver(clock.MinuteChangedEvent{Time: f.clock})
+
+	if _, kept := f.plugin.devices[beaconAddress]; !kept {
+		t.Error("a device with a stable address was aged out")
+	}
+}
+
+func TestAging_ARegisteredDeviceThatIsLetGoIsDeregisteredAndAConfiguredOneIsNeverLetGo(t *testing.T) {
+	config := NewPluginConfig()
+	config.AddThermometer("4A:00:00:00:00:01", "Configured") // an address that would change, named in the configuration
+	f := newFixture(t, config)
+
+	// A recognised device that happens to have an address that changes.
+	f.container.deliver(bluetooth.SightingEvent{
+		Source: "src", Address: "4B:00:00:00:00:02", AddressType: bluetooth.AddressRandom, Time: epoch,
+		LocalName: "GVH5075_0002", ServiceUUIDs: []string{bluetooth.UUID16(0xec88)},
+	})
+
+	if len(f.container.entityIds) != 2 {
+		t.Fatalf("entities %v", f.container.entityIds)
+	}
+
+	// The configured device is heard, so it is known to have an address that changes.
+	f.sight("src", "4A:00:00:00:00:01", bluetooth.AddressRandom, "", -60)
+
+	if !f.device("4A:00:00:00:00:01").temporary {
+		t.Fatal("the configured device is not known to be temporary")
+	}
+
+	f.advance(time.Hour)
+	f.container.deliver(clock.MinuteChangedEvent{Time: f.clock})
+
+	if _, kept := f.plugin.devices["4A:00:00:00:00:01"]; !kept {
+		t.Error("the configured device was let go")
+	}
+
+	if _, kept := f.plugin.devices["4B:00:00:00:00:02"]; kept {
+		t.Error("the other was kept")
+	}
+
+	if !reflect.DeepEqual(f.container.deregistered, []string{"bluetooth_2"}) {
+		t.Errorf("deregistered %v", f.container.deregistered)
+	}
+}
+
+func TestTrimming_LetsGoOfADeviceWhoseAddressChangesBeforeOneThatIsOlderAndStays(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	// The oldest keeps its address.
+	f.sight("src", beaconAddress, bluetooth.AddressRandom, "Tag", -60)
+
+	for i := 0; i < maxDevices-1; i++ {
+		f.advance(time.Second)
+		f.sight("src", bluetooth.FormatAddress(uint64(0x440000000000+i)), bluetooth.AddressRandom, fmt.Sprintf("P%d", i), -60)
+	}
+
+	if len(f.plugin.devices) != maxDevices {
+		t.Fatalf("%d devices", len(f.plugin.devices))
+	}
+
+	f.advance(time.Second)
+	f.sight("src", "11:22:33:44:55:66", bluetooth.AddressPublic, "New", -60)
+
+	if _, kept := f.plugin.devices[beaconAddress]; !kept {
+		t.Error("the device that stays was let go for one that changes")
+	}
+
+	if _, kept := f.plugin.devices[bluetooth.FormatAddress(0x440000000000)]; kept {
+		t.Error("the oldest device that changes was kept")
+	}
+}
+
+func TestSightings_EachSourceHearsADeviceAtItsOwnStrengthAndTheStrongestIsShown(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	f.sight("near", beaconAddress, bluetooth.AddressRandom, "Tag", -50)
+	f.sight("far", beaconAddress, bluetooth.AddressRandom, "Tag", -85)
+
+	d := f.device(beaconAddress)
+	if d.RSSIData.RSSI != -50 || len(d.signals) != 2 || d.signals["far"].rssi != -85 {
+		t.Errorf("rssi %v, signals %+v", d.RSSIData, d.signals)
 	}
 }
