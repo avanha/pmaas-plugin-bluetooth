@@ -6,6 +6,7 @@ import (
 	"github.com/muka/go-bluetooth/bluez/profile/device"
 
 	pc "github.com/avanha/pmaas-plugin-bluetooth/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/parser"
 )
 
 type ParseResult struct {
@@ -19,8 +20,6 @@ type ParseResult struct {
 
 var EmptyParseResult ParseResult = ParseResult{BatteryLevel: -1}
 
-type DataParserFunc func(*ObservedDevice, string, interface{}) (bool, ParseResult)
-
 type ObservedDevice struct {
 	ObjectPath       dbus.ObjectPath
 	Address          string
@@ -28,8 +27,11 @@ type ObservedDevice struct {
 	UUIDs            []string
 	Device           *device.Device1
 	PropertyChangeCh chan *bluez.PropertyChanged
-	ParseFunc        DataParserFunc
-	ParserState      any
-	MakeAndModel     string
-	Type             pc.DeviceType
+	Parser           *parser.Parser
+
+	// SeenRecords is the readings already handed to the parser, for a parser whose readings are keys of the manufacturer
+	// data (see parser.Parser.ReadingInCompanyID). BlueZ keeps every key it has seen in a discovery session.
+	SeenRecords  map[string]bool
+	MakeAndModel string
+	Type         pc.DeviceType
 }

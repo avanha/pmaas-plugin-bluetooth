@@ -3,13 +3,12 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	pc "github.com/avanha/pmaas-plugin-bluetooth/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/parser"
 	"github.com/avanha/pmaas-plugin-bluetooth/scanner/common"
-	"github.com/avanha/pmaas-plugin-bluetooth/scanner/parser/govee"
-	"github.com/avanha/pmaas-plugin-bluetooth/scanner/parser/inkbird"
+	"github.com/avanha/pmaas-spi/bluetooth"
 	dbus "github.com/godbus/dbus/v5"
 	"github.com/muka/go-bluetooth/api"
 	"github.com/muka/go-bluetooth/bluez"
@@ -235,7 +234,6 @@ func (p *Scanner) handleDiscoveryEvent(
 				AddressType:      dev.Properties.AddressType,
 				PropertyChangeCh: nil,
 				UUIDs:            dev.Properties.UUIDs,
-				ParseFunc:        nil,
 				Device:           dev,
 				Type:             pc.Unknown,
 				MakeAndModel:     "",
@@ -244,8 +242,8 @@ func (p *Scanner) handleDiscoveryEvent(
 			var parseOk bool = false
 			var parseResult common.ParseResult = common.EmptyParseResult
 
-			if observedDevice.ParseFunc != nil {
-				parseOk, parseResult = observedDevice.ParseFunc(
+			if observedDevice.Parser != nil {
+				parseOk, parseResult = parseDevice(
 					&observedDevice,
 					/* changePropertyName = */ "",
 					/* newPropertyValue = */ nil)
@@ -352,7 +350,7 @@ func (p *Scanner) handlePropChangeEvent(evt *devicePropertyChanged, scanEventCh 
 		currentDeviceType := evt.device.Type
 
 		// If there isn't a parse function already, try choosing a parse function again now that we have more data
-		if evt.device.ParseFunc == nil {
+		if evt.device.Parser == nil {
 			p.chooseParser(evt.device)
 		}
 
@@ -361,8 +359,8 @@ func (p *Scanner) handlePropChangeEvent(evt *devicePropertyChanged, scanEventCh 
 			scanEventCh <- scanEvent
 		}
 
-		if evt.device.ParseFunc != nil {
-			ok, parseResult := evt.device.ParseFunc(evt.device, evt.bluezEvent.Name, evt.newValue)
+		if evt.device.Parser != nil {
+			ok, parseResult := parseDevice(evt.device, evt.bluezEvent.Name, evt.newValue)
 			if ok {
 				if parseResult.BatteryLevel != -1 {
 					scanEvent := newScanEvent(EVENT_TYPE_BATTERY_LEVEL_UPDATED, evt)
@@ -412,18 +410,14 @@ func newScanEvent(eventType string, evt *devicePropertyChanged) *ScanEvent {
 }
 
 func (p *Scanner) chooseParser(dev *common.ObservedDevice) {
-	for _, uuid := range dev.UUIDs {
-		if strings.HasPrefix(uuid, "0000ec88") {
-			dev.MakeAndModel = "Govee GVH5075"
-			dev.Type = pc.ThermometerAndHygrometer
-			dev.ParseFunc = govee.Parse
-			break
-		} else if uuid == "0000fff0-0000-1000-8000-00805f9b34fb" && dev.Device.Properties.Name == "sps" {
-			fmt.Println("Chose inkbird parser")
-			dev.MakeAndModel = "Inkbird IBS-TH"
-			dev.Type = pc.ThermometerAndHygrometer
-			dev.ParseFunc = inkbird.Parse
-			break
-		}
+	chosen := parser.Choose(bluetooth.Fields{ServiceUUIDs: dev.UUIDs, LocalName: dev.Device.Properties.Name})
+	if chosen == nil {
+		return
 	}
+
+	fmt.Printf("Chose the %s parser\n", chosen.Name)
+
+	dev.MakeAndModel = chosen.MakeAndModel
+	dev.Type = chosen.Type
+	dev.Parser = chosen
 }
