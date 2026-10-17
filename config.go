@@ -1,32 +1,43 @@
 package bluetooth
 
-import "fmt"
-import "github.com/avanha/pmaas-plugin-bluetooth/common"
+import (
+	"fmt"
 
-const DefaultAdapter string = "DEFAULT_ADAPTER"
+	"github.com/avanha/pmaas-plugin-bluetooth/common"
+	"github.com/avanha/pmaas-spi/bluetooth"
+)
 
+// PluginConfig configures the plugin. Where advertisements are heard is not its business: add a source plugin for each place
+// (pmaas-plugin-bluez for the local radio; ESPHome Bluetooth proxies come with the esphome plugin).
 type PluginConfig struct {
-	Adapter           string
+	// EnableTestDevices adds a thermometer that doesn't exist, to see how one is shown.
 	EnableTestDevices bool
 	devices           map[string]*device
 }
 
 func NewPluginConfig() PluginConfig {
 	return PluginConfig{
-		Adapter:           DefaultAdapter,
 		EnableTestDevices: false,
 		devices:           make(map[string]*device),
 	}
 }
 
+// AddThermometer names a thermometer by its address, so that it is a thermometer from the first advertisement and the
+// bluetooth plugin asks the sources for it. The address is any case, with ":" or "-"; it panics if it is not an address or
+// has been added already, like regexp.MustCompile does for a pattern that can't be: it is written in the program.
 func (c *PluginConfig) AddThermometer(address string, name string) {
-	existing, ok := c.devices[address]
-	if ok {
-		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", address, existing.LocalName))
+	normal, ok := bluetooth.NormalizeAddress(address)
+	if !ok {
+		panic(fmt.Sprintf("Device address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
 	}
 
-	c.devices[address] = &device{
-		Address:    address,
+	existing, ok := c.devices[normal]
+	if ok {
+		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", normal, existing.LocalName))
+	}
+
+	c.devices[normal] = &device{
+		Address:    normal,
 		LocalName:  name,
 		DeviceType: common.Thermometer,
 	}

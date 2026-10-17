@@ -1,6 +1,7 @@
 # Bluetooth: sources, and the plugin that makes sense of them
 
-Status: 2026-10-17. Phase 1 (the `pmaas-spi/bluetooth` contract) is built and tested in `pmaas-spi`; the rest is not. Where this
+Status: 2026-10-17. Phases 1 to 3 are built and tested, and not yet released or run on the Pi: the contract in
+`pmaas-spi/bluetooth`, the parsers, and the BlueZ source with this plugin consuming. The proxy source and buttons are not. Where this
 spec and that package differ, the package is right: `Fields` is embedded in `AdvertisementEvent`, the coalescer returns a
 `Verdict` and the rule that matched, and `ManufacturerOf` builds a rule's optional company ID.
 
@@ -263,7 +264,9 @@ Each is shippable on its own.
 2. **Parsers.** Decouple Govee and Inkbird from BlueZ, move them under the `bluetooth` plugin as pure functions with
    fixtures. The existing scanner is adapted to feed them. No behaviour change.
 3. **BlueZ extracted.** `pmaas-plugin-bluez` emits advertisements and registers a source; `bluetooth` consumes events
-   and publishes interest. Same devices as today, new wiring.
+   and publishes interest. Same devices as today, new wiring. *Done, unreleased, and not yet run against a real adapter.*
+   Differences from the plan: the page does not yet show sources or a best source; a reading seen by two sources is not
+   de-duplicated (harmless for sensors, which are idempotent; it matters for buttons).
 4. **ESPHome proxy source.** Raw advertisements to events, scan mode, source entity. Merging across sources.
 5. **Buttons.** The press event and its parser, once the BC011's behaviour is captured; the event-driven automation trigger
    is its own piece of work.

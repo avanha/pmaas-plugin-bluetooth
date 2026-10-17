@@ -1,6 +1,26 @@
 # A PMAAS Plugin for Bluetooth BLE Beacons
 
-Scans for BLE beacons using Bluez over DBus.  
+Takes Bluetooth LE advertisements from any number of *sources*, works out what the devices are (today a Govee GVH5075 and
+an Inkbird IBS-TH), and publishes them as entities. It does not listen to a radio itself:
+
+* [`pmaas-plugin-bluez`](../pmaas-plugin-bluez) hears with the local radio, through BlueZ over D-Bus (Linux).
+* An ESPHome Bluetooth proxy is a source too (planned: see `DESIGN.md`).
+
+```go
+coreConfig.AddPlugin(bluez.NewPlugin(bluez.NewPluginConfig()), config.PluginConfig{}) // a source
+conf := bluetooth.NewPluginConfig()
+conf.AddThermometer("A4:C1:38:CC:E2:F0", "Garage") // optional: name a device you know
+coreConfig.AddPlugin(bluetooth.NewPlugin(conf), config.PluginConfig{})
+```
+
+It tells the sources what it wants, with an `InterestEvent` (what the parsers recognise, and every device named in the
+configuration), so that the many advertisements nobody wants are dropped where they are heard. Nothing is forwarded until it
+has said so, so a source added without this plugin does nothing.
+
+The design, and what is still to come, is in `DESIGN.md`. The decoding is in `parser/`: plain functions over decoded
+advertisement fields, tested with captured advertisements.
+
+`PluginConfig.Adapter` has moved to the BlueZ plugin.
 
 ## Notes
 
