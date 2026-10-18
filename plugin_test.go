@@ -874,3 +874,142 @@ func TestAddInkbirdThermometer_MistakesPanic(t *testing.T) {
 		}()
 	}
 }
+
+// windowFixture is a plugin whose active scan windows are closed by the test, not by a timer.
+type windowFixture struct {
+	*fixture
+	closeWindow func()
+	canceled    int
+	delays      []time.Duration
+}
+
+func newWindowFixture(t *testing.T, config PluginConfig) *windowFixture {
+	t.Helper()
+
+	w := &windowFixture{}
+	f := &fixture{t: t, container: newFakeContainer(), clock: epoch}
+	f.plugin = NewPlugin(config).(*plugin)
+	f.plugin.now = func() time.Time { return f.clock }
+	f.plugin.Init(f.container)
+	f.plugin.after = func(d time.Duration, fn func()) func() {
+		w.delays = append(w.delays, d)
+		w.closeWindow = fn
+
+		return func() { w.canceled++ }
+	}
+	f.plugin.Start()
+	w.fixture = f
+
+	return w
+}
+
+func (w *windowFixture) lastActive() bool {
+	interests := w.container.interests()
+
+	return interests[len(interests)-1].ActiveScan
+}
+
+func (w *windowFixture) minute() {
+	w.advance(time.Minute)
+	w.container.deliver(clock.MinuteChangedEvent{Time: w.clock})
+}
+
+func TestActiveScanWindows_AnInkbirdIsHeardForAWhileEveryFewMinutes(t *testing.T) {
+	config := NewPluginConfig()
+	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	w := newWindowFixture(t, config)
+
+	// A window right away, for the default 30 seconds.
+	if !w.lastActive() || len(w.delays) != 1 || w.delays[0] != 30*time.Second {
+		t.Fatalf("at the start: active=%v delays=%v", w.lastActive(), w.delays)
+	}
+
+	// The timer closes it, and the sources are told.
+	w.closeWindow()
+
+	if w.lastActive() {
+		t.Error("still active after the window closed")
+	}
+
+	// Not again until three minutes after the last began.
+	for _, minute := range []int{1, 2} {
+		w.minute()
+
+		if w.lastActive() || len(w.delays) != 1 {
+			t.Fatalf("minute %d: active=%v windows=%d", minute, w.lastActive(), len(w.delays))
+		}
+	}
+
+	w.minute()
+
+	if !w.lastActive() || len(w.delays) != 2 {
+		t.Fatalf("minute 3: active=%v windows=%d", w.lastActive(), len(w.delays))
+	}
+
+	// A minute tick while a window is open doesn't open another or close this one.
+	w.minute()
+
+	if !w.lastActive() || len(w.delays) != 2 {
+		t.Errorf("while open: active=%v windows=%d", w.lastActive(), len(w.delays))
+	}
+}
+
+func TestActiveScanWindows_AreConfigurable(t *testing.T) {
+	config := NewPluginConfig()
+	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	config.ActiveScanEvery, config.ActiveScanFor = 5*time.Minute, 10*time.Second
+	w := newWindowFixture(t, config)
+
+	w.closeWindow()
+
+	for i := 0; i < 4; i++ {
+		w.minute()
+	}
+
+	if w.lastActive() || w.delays[0] != 10*time.Second {
+		t.Fatalf("before 5 minutes: active=%v delays=%v", w.lastActive(), w.delays)
+	}
+
+	w.minute()
+
+	if !w.lastActive() {
+		t.Error("not active after 5 minutes")
+	}
+}
+
+func TestActiveScanWindows_NotWithoutADeviceThatNeedsThem(t *testing.T) {
+	w := newWindowFixture(t, NewPluginConfig())
+
+	for i := 0; i < 10; i++ {
+		w.minute()
+	}
+
+	if w.lastActive() || len(w.delays) != 0 {
+		t.Errorf("active=%v windows=%d", w.lastActive(), len(w.delays))
+	}
+}
+
+func TestActiveScanWindows_ActiveScanAlwaysOnNeedsNoWindows(t *testing.T) {
+	config := NewPluginConfig()
+	config.ActiveScan = true
+	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	w := newWindowFixture(t, config)
+
+	w.minute()
+
+	if !w.lastActive() || len(w.delays) != 0 {
+		t.Errorf("active=%v windows=%d", w.lastActive(), len(w.delays))
+	}
+}
+
+func TestActiveScanWindows_StoppingEndsTheTimer(t *testing.T) {
+	config := NewPluginConfig()
+	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	w := newWindowFixture(t, config)
+
+	w.plugin.Stop()
+
+	if w.canceled != 1 || w.plugin.windowOpen {
+		t.Errorf("canceled=%d open=%v", w.canceled, w.plugin.windowOpen)
+	}
+}

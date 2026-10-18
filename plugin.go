@@ -143,6 +143,17 @@ type plugin struct {
 	listAll    bool
 	activeScan bool
 
+	// scanEvery and scanFor are how often and how long to scan actively when a configured device needs scan responses
+	// (needsScanResponses). windowOpen is whether the scan is active for that reason now, and lastWindow when the last window
+	// opened. stopWindow ends the timer that closes the window. after runs a function on the plugin goroutine after a delay, and
+	// returns what cancels it; tests replace it.
+	scanEvery, scanFor time.Duration
+	needsScanResponses bool
+	windowOpen         bool
+	lastWindow         time.Time
+	stopWindow         func()
+	after              func(d time.Duration, f func()) (cancel func())
+
 	// beaconButtons are the buttons the assembly named, and buttons the ones being watched, by address.
 	beaconButtons []*BeaconButton
 	buttons       map[string]*button
@@ -160,6 +171,8 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 		now:           time.Now,
 		listAll:       config.ListAllDevices,
 		activeScan:    config.ActiveScan,
+		scanEvery:     config.ActiveScanEvery,
+		scanFor:       config.ActiveScanFor,
 		beaconButtons: config.buttons,
 		buttons:       make(map[string]*button),
 	}
@@ -185,6 +198,10 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 		}
 
 		instance.configured = append(instance.configured, address)
+
+		if dev.parser != nil && dev.parser.NeedsScanResponse {
+			instance.needsScanResponses = true
+		}
 	}
 
 	sort.Strings(instance.configured)
@@ -232,6 +249,15 @@ func (p *plugin) ShortName() string {
 func (p *plugin) Init(container spi.IPMAASContainer) {
 	p.container = container
 	p.log = logging.For(container)
+	p.after = func(d time.Duration, f func()) func() {
+		timer := time.AfterFunc(d, func() {
+			if err := container.EnqueueOnPluginGoRoutine(f); err != nil {
+				p.log.Error("unable to close the active scan window", "error", err)
+			}
+		})
+
+		return func() { timer.Stop() }
+	}
 	container.ProvideContentFS(&contentFS, "content")
 	container.EnableStaticContent("static")
 	container.AddRoute("", p.HandleHttpList)
@@ -347,6 +373,7 @@ func (p *plugin) Start() {
 		p.receivers = append(p.receivers, handle)
 	}
 
+	p.updateScanWindow(p.now())
 	p.publishInterest()
 
 	p.log.Info("started")
@@ -372,6 +399,7 @@ func (p *plugin) Stop() chan func() {
 		}
 	}
 
+	p.closeScanWindow()
 	p.stopButtons()
 
 	for _, dev := range p.devices {
@@ -396,6 +424,7 @@ func isMinuteChanged(eventInfo *events.EventInfo) bool {
 }
 
 func (p *plugin) onMinute(*events.EventInfo) error {
+	p.updateScanWindow(p.now())
 	p.publishInterest()
 	p.ageDevices(p.now())
 

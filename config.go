@@ -2,6 +2,7 @@ package bluetooth
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
 	"github.com/avanha/pmaas-plugin-bluetooth/parser"
@@ -28,6 +29,13 @@ type PluginConfig struct {
 	// for more. The Govee thermometers and a beacon button need nothing but passive.
 	ActiveScan bool
 
+	// ActiveScanEvery and ActiveScanFor are how often, and for how long, to scan actively when something configured needs scan
+	// responses (an Inkbird, see AddInkbirdThermometer) and ActiveScan is not already on: the rest of the time the scan is
+	// passive. They default to 3 minutes and 30 seconds. They are rounded up to whole minutes at the start (the plugin looks
+	// once a minute), and a window shorter than the time a device takes to repeat itself can miss it.
+	ActiveScanEvery time.Duration
+	ActiveScanFor   time.Duration
+
 	devices map[string]*device
 	buttons []*BeaconButton
 }
@@ -36,6 +44,8 @@ func NewPluginConfig() PluginConfig {
 	return PluginConfig{
 		EnableTestDevices: false,
 		ListAllDevices:    true,
+		ActiveScanEvery:   3 * time.Minute,
+		ActiveScanFor:     30 * time.Second,
 		devices:           make(map[string]*device),
 	}
 }

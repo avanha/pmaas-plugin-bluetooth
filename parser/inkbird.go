@@ -39,6 +39,7 @@ var Inkbird = &Parser{
 		return false
 	},
 
+	NeedsScanResponse:  true,
 	ReadingInCompanyID: true,
 
 	Parse: parseInkbird,

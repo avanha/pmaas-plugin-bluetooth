@@ -50,11 +50,13 @@ The plugin asks its sources to scan passively. Set `config.ActiveScan = true` fo
 radio more and can miss the brief burst of a beacon button. The Govee thermometers and beacon buttons need nothing but passive.
 An ESPHome proxy is switched to the mode the plugin asks for when it connects, whatever its YAML says.
 
-**Inkbird IBS-TH.** It gives its name (`sps`) only in a scan response, and the plugin recognises it by that name, so a passive scan
-never identifies it and none of its frames are forwarded. Configure it by address and say what it is:
-`config.AddInkbirdThermometer("49:22:01:23:0A:1B", "Patio")`. It is then decoded from its readings alone, which is also safer than
-recognising it by the service UUID it lists (`fff0`), a UUID other gadgets use. A new device that is not recognised is worth a look
-with `ActiveScan` on: turn it on while finding out what a device advertises, and off again once it is configured.
+**Inkbird IBS-TH.** It gives its name (`sps`) *and its reading* only in a scan response, which a passive scan never asks for: the
+frames a passive scan hears of it are just flags and a service UUID. So an Inkbird has to be configured by address and told what it
+is, `config.AddInkbirdThermometer("49:22:01:23:0A:1B", "Patio")` (the service UUID it lists, `fff0`, is used by other gadgets, so
+it is not safe to recognise it by), and the plugin scans actively for a while every so often when one is configured: the first
+window as it starts, then every `ActiveScanEvery` (default 3 minutes) for `ActiveScanFor` (default 30 seconds). The rest of the time
+the scan is passive. Set `ActiveScan` to scan actively all the time instead, which is also what to turn on while finding out what an
+unknown device advertises. A BlueZ source (the Pi's own radio) scans actively whatever it is asked, so this is only about proxies.
 
 ## Notes
 

@@ -39,6 +39,10 @@ type Parser struct {
 	// Identifies says whether a device is one of these, from everything known about it so far.
 	Identifies func(known bluetooth.Fields) bool
 
+	// NeedsScanResponse is that the device gives its reading (or its name) only in a scan response, which a passive scan never
+	// asks for. A plugin that has one of these configured scans actively now and then (see the bluetooth plugin's ActiveScanFor).
+	NeedsScanResponse bool
+
 	// ReadingInCompanyID is that the device puts its reading where a company ID goes, so each reading is a different
 	// key of ManufacturerData (the Inkbird). BlueZ keeps every key it has seen in a discovery session, so a source that
 	// gets its fields from BlueZ has to hand Parse only the keys that are new.
