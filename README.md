@@ -38,10 +38,19 @@ which iBeacon frame is which press (`.Single(...)`, `.Double(...)`, `.Triple(...
 `device.ButtonPressedEvent`, and the button is an entity (`device.IButton`) that an automation can wait for.
 
 The devices page lists each beacon button with its address, how loudly and when it was last heard, and what was last done with
-it. It also shows the battery, **if the beacon says it**: the iBeacon frames carry no battery, so give one of the beacon's slots
-to an *Eddystone-TLM* frame that advertises all the time (in the KBeaconPro app, a slot of type "Eddystone TLM"; the beacon then
-also stays connectable). The voltage it reports is turned into a rough percentage, since a coin cell holds its voltage until near
-the end; hover over the percentage for the voltage. Until a TLM frame has been heard the page says the battery is unknown.
+it. It also shows the battery, **if the beacon says it**: the iBeacon frames carry no battery, so give one of the beacon's slots to a
+frame that advertises all the time (in the KBeaconPro app, a slot of type "System" or "Eddystone TLM"; the beacon then also stays
+connectable). Either works, and the plugin reads both:
+
+* **KKM System** is the beacon maker's own frame (KKM, who make the BlueCharm beacons). It carries the beacon's own battery
+  percentage (which can be over 100 on a new cell; it is shown as 100), the model and the firmware version. It is the better
+  one for the battery, because the beacon's firmware knows its cell; it is not a standard, so it is only for KKM beacons.
+* **Eddystone TLM** is a standard, so it works on any beacon that has it. It carries the battery *voltage*, which is turned into a
+  rough percentage here with a curve for a coin cell (hover over the percentage for the voltage), plus the beacon's temperature and
+  how long it has been on. Use it for a beacon that isn't KKM's, or if you want the voltage.
+
+If both are advertised, the beacon's own percentage is the one shown and the voltage is kept alongside it. Until one has been heard
+the page says the battery is unknown.
 
 ## Scanning
 

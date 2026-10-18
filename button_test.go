@@ -644,3 +644,59 @@ func TestListItems_ABeaconButtonIsListedOnceEvenWhenItAdvertisesAName(t *testing
 		t.Errorf("%d beacons and %d devices", beacons, devices)
 	}
 }
+
+// systemFrame is the advertising data of the BlueCharm BC011 Pro's System frame as a proxy captured it, with the battery at the given
+// percentage, and its name in the scan response.
+func systemFrame(percent byte) string {
+	return fmt.Sprintf("0201060303aafe0e16aafe220b%02xdd8800003d36063e0d09424350726f5f323232363136", percent)
+}
+
+func TestBeacon_BatteryFromTheSystemFrameIsTheBeaconsOwnFigure(t *testing.T) {
+	config, _ := buttonConfig()
+	f := newFixture(t, config)
+
+	beacon := func() publishedBeacon { return f.plugin.listItems()[0].(publishedBeacon) }
+
+	f.advance(time.Minute)
+	f.hear("s", buttonAddress, -75, systemFrame(0x67)) // 103%: over 100 on a good cell
+
+	b := beacon()
+	if b.Battery.Level != 100 || b.Battery.LastUpdateTime != f.clock || b.Millivolts != 0 || !b.Heard {
+		t.Errorf("103%% reported: %+v", b)
+	}
+
+	f.hear("s", buttonAddress, -75, systemFrame(62))
+
+	if b := beacon(); b.Battery.Level != 62 {
+		t.Errorf("62%% reported: %+v", b)
+	}
+
+	// It isn't a press, and its name isn't a second device on the page.
+	if len(f.container.buttonEvents()) != 0 {
+		t.Errorf("a System frame was taken for a press: %v", pressesOf(f.container))
+	}
+
+	for _, item := range f.plugin.listItems() {
+		if _, isDevice := item.(publishedDevice); isDevice {
+			t.Errorf("the beacon is listed as a device too")
+		}
+	}
+}
+
+func TestBeacon_AVoltageDoesNotReplaceTheBeaconsOwnLevelButIsKept(t *testing.T) {
+	config, _ := buttonConfig()
+	f := newFixture(t, config)
+
+	f.hear("s", buttonAddress, -75, tlmFrame(2800)) // 55% by the curve
+
+	if b := f.plugin.listItems()[0].(publishedBeacon); b.Battery.Level != 55 || b.Millivolts != 2800 {
+		t.Fatalf("from the voltage: %+v", b)
+	}
+
+	f.hear("s", buttonAddress, -75, systemFrame(80))
+	f.hear("s", buttonAddress, -75, tlmFrame(2700))
+
+	if b := f.plugin.listItems()[0].(publishedBeacon); b.Battery.Level != 80 || b.Millivolts != 2700 {
+		t.Errorf("after the beacon gave its own level: %+v", b)
+	}
+}

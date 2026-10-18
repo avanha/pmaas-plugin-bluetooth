@@ -163,6 +163,9 @@ type button struct {
 	battery    environmental.BatteryData
 	millivolts int
 
+	// ownLevel is that the battery level is the beacon's own (a System frame), so a voltage doesn't replace it.
+	ownLevel bool
+
 	stub *buttonStub
 }
 
@@ -241,9 +244,17 @@ func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 	previous := b.lastHeard
 	b.lastHeard, b.rssi = now, a.RSSI
 
-	if tlm, ok := bluetooth.ParseEddystoneTLM(a.ServiceData); ok && tlm.BatteryMillivolts > 0 {
+	// The battery, from whichever frame the beacon is set to advertise. Its own figure (the KKM System frame) is better than one worked
+	// out here from a voltage (Eddystone-TLM), so once the beacon has given its own, the voltage only adds itself to the picture.
+	if system, ok := bluetooth.ParseKKMSystem(a.ServiceData); ok {
+		b.battery = environmental.BatteryData{Level: min(int(system.BatteryPercent), 100), LastUpdateTime: now}
+		b.ownLevel = true
+	} else if tlm, ok := bluetooth.ParseEddystoneTLM(a.ServiceData); ok && tlm.BatteryMillivolts > 0 {
 		b.millivolts = int(tlm.BatteryMillivolts)
-		b.battery = environmental.BatteryData{Level: batteryLevel(b.millivolts), LastUpdateTime: now}
+
+		if !b.ownLevel {
+			b.battery = environmental.BatteryData{Level: batteryLevel(b.millivolts), LastUpdateTime: now}
+		}
 	}
 
 	frame, ok := bluetooth.ParseIBeacon(a.ManufacturerData)

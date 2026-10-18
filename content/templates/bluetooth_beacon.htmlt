@@ -7,7 +7,7 @@
             </div>
         {{end}}
         {{if not .Battery.IsEmpty}}
-            <div class="battery-data" title="{{.Millivolts}} mV, roughly">
+            <div class="battery-data"{{if .Millivolts}} title="{{.Millivolts}} mV, roughly"{{end}}>
                 <i class="bi bi-{{BatteryIcon .Battery.Level}}{{if IsLowBattery .Battery.Level}} low{{end}}"></i> <span class="value">{{.Battery.Level}}</span>
             </div>
         {{end}}
@@ -24,7 +24,7 @@
             {{if .LastPress}}Last press: {{.LastPress | html}}, {{RelativeTime .LastPressTime}} ago ({{.Presses}} in all){{else}}Not pressed yet{{end}}
         </div>
         {{if .Battery.IsEmpty}}
-            <div class="timestamp"><div class="value" title="The beacon only says its battery in an Eddystone-TLM frame: give one of its slots to it, always advertising.">battery unknown</div></div>
+            <div class="timestamp"><div class="value" title="The beacon only says its battery in a frame of its own: give one of its slots to a KKM System or an Eddystone-TLM frame, always advertising.">battery unknown</div></div>
         {{end}}
     </div>
 </div>
