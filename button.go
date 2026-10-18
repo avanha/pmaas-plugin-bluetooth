@@ -238,6 +238,7 @@ func (b *button) entityEvent() events.EntityEvent {
 // hear takes in an advertisement from a beacon button's address, and announces a press if it is the first frame of one.
 func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 	now := p.now()
+	previous := b.lastHeard
 	b.lastHeard, b.rssi = now, a.RSSI
 
 	if tlm, ok := bluetooth.ParseEddystoneTLM(a.ServiceData); ok && tlm.BatteryMillivolts > 0 {
@@ -255,6 +256,9 @@ func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 		return
 	}
 
+	p.log.Debug("heard a frame of a press", "name", b.config.name, "press", press, "source", a.Source, "rssi", a.RSSI,
+		"behind", now.Sub(a.Time), "sincePreviousFrame", now.Sub(previous))
+
 	last, heard := b.lastFrame[press]
 	b.lastFrame[press] = now
 
@@ -266,7 +270,7 @@ func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 	b.data.Presses++
 	b.data.LastPress, b.data.LastPressTime = press, now
 
-	p.log.Debug("button pressed", "name", b.config.name, "press", press)
+	p.log.Debug("button pressed", "name", b.config.name, "press", press, "behind", now.Sub(a.Time))
 
 	p.broadcast(b.id, spidevice.ButtonPressedEvent{EntityEvent: b.entityEvent(), Press: press, Time: now, Count: b.data.Presses})
 	p.broadcast(b.id, events.EntityStateChangedEvent{EntityEvent: b.entityEvent(), NewState: b.data})
