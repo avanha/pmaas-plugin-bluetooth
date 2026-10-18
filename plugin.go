@@ -139,8 +139,9 @@ type plugin struct {
 	// receivers are the handles of the event receivers registered, to be given back when the plugin stops.
 	receivers []int
 
-	// listAll is whether to ask the sources for sightings of every device they hear.
-	listAll bool
+	// listAll is whether to ask the sources for sightings of every device they hear, and activeScan whether to ask them to scan actively.
+	listAll    bool
+	activeScan bool
 
 	// beaconButtons are the buttons the assembly named, and buttons the ones being watched, by address.
 	beaconButtons []*BeaconButton
@@ -158,6 +159,7 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 		devices:       make(map[string]*device),
 		now:           time.Now,
 		listAll:       config.ListAllDevices,
+		activeScan:    config.ActiveScan,
 		beaconButtons: config.buttons,
 		buttons:       make(map[string]*button),
 	}

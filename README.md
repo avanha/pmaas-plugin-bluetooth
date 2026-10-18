@@ -43,6 +43,13 @@ to an *Eddystone-TLM* frame that advertises all the time (in the KBeaconPro app,
 also stays connectable). The voltage it reports is turned into a rough percentage, since a coin cell holds its voltage until near
 the end; hover over the percentage for the voltage. Until a TLM frame has been heard the page says the battery is unknown.
 
+## Scanning
+
+The plugin asks its sources to scan passively. Set `config.ActiveScan = true` for devices that put their names in scan responses
+(the Inkbird is known by its name, and a phone is only listed once it has one); the sources then scan actively, which costs the
+radio more and can miss the brief burst of a beacon button. The Govee thermometers and beacon buttons need nothing but passive.
+An ESPHome proxy is switched to the mode the plugin asks for when it connects, whatever its YAML says.
+
 ## Notes
 
 This is my oldest plugin, so it isn't exactly the be Go code or all that well organized. 

@@ -34,8 +34,8 @@ func (p *plugin) publishInterest() {
 		Owner: p.ShortName(),
 		Rules: p.interest(),
 
-		// Active scanning, for now, because a name can be in a scan response and the Inkbird is known by its name.
-		ActiveScan: true,
+		// Passive unless the assembly asked, because a name can be in a scan response and the Inkbird is known by its name.
+		ActiveScan: p.activeScan,
 	}
 
 	if p.listAll {

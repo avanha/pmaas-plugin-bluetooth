@@ -21,6 +21,12 @@ type PluginConfig struct {
 	// is listed.
 	ListAllDevices bool
 
+	// ActiveScan is whether to ask the sources to scan actively, which gets the scan responses some devices put their names in
+	// (the Inkbird is known by its name, and a phone is only listed once it has one). The default is passive, which costs the radio
+	// less and hears a beacon's brief burst more reliably, because an active scanner stops listening to ask each device it hears
+	// for more. The Govee thermometers and a beacon button need nothing but passive.
+	ActiveScan bool
+
 	devices map[string]*device
 	buttons []*BeaconButton
 }

@@ -262,7 +262,7 @@ func TestStart_RegistersWhatWasConfiguredListensAndSaysWhatIsWanted(t *testing.T
 	}
 
 	interests := f.container.interests()
-	if len(interests) != 1 || interests[0].Owner != "bluetooth" || !interests[0].ActiveScan || interests[0].Sightings != time.Minute {
+	if len(interests) != 1 || interests[0].Owner != "bluetooth" || interests[0].ActiveScan || interests[0].Sightings != time.Minute {
 		t.Fatalf("interests %+v", interests)
 	}
 
@@ -786,5 +786,18 @@ func TestSightings_EachSourceHearsADeviceAtItsOwnStrengthAndTheStrongestIsShown(
 	d := f.device(beaconAddress)
 	if d.RSSIData.RSSI != -50 || len(d.signals) != 2 || d.signals["far"].rssi != -85 {
 		t.Errorf("rssi %v, signals %+v", d.RSSIData, d.signals)
+	}
+}
+
+func TestInterest_ScansPassivelyUnlessTheAssemblyAsksForActive(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		config := NewPluginConfig()
+		config.ActiveScan = active
+		f := newFixture(t, config)
+
+		interests := f.container.interests()
+		if len(interests) == 0 || interests[len(interests)-1].ActiveScan != active {
+			t.Errorf("asked for active=%v, interest %+v", active, interests)
+		}
 	}
 }
