@@ -258,6 +258,11 @@ func (p *plugin) listItems() []interface{} {
 			continue
 		}
 
+		// A beacon button is listed as one, with what it is for.
+		if _, isButton := p.buttons[device.Address]; isButton {
+			continue
+		}
+
 		var pd Sortable
 
 		if device.DeviceType == common.Thermometer || device.DeviceType == common.ThermometerAndHygrometer {
@@ -303,6 +308,7 @@ func (p *plugin) Start() {
 		reflect.TypeOf((*publishedDevice)(nil)).Elem(), p.bluetoothDeviceRendererFactory)
 
 	p.container.RegisterEntityRenderer(publishedBeaconType, p.beaconRendererFactory)
+	p.container.RegisterEntityRenderer(publishedThermometerType, p.thermometerRendererFactory)
 
 	p.startButtons()
 

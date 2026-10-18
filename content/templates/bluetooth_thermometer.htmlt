@@ -1,0 +1,24 @@
+<div class="entity-bluetooth-device entity-bluetooth-thermometer">
+    <div class="title-row">
+        <div class="name">{{.Name | html}}</div>
+        {{if not .RSSIData.IsEmpty}}
+            <div class="rssi-data"><div><i class="bi bi-reception-4"></i> {{.RSSIData.RSSI | html}}</div></div>
+        {{end}}
+        {{if not .BatteryData.IsEmpty}}
+            <div class="battery-data">
+                <i class="bi bi-{{BatteryIcon .BatteryData.Level}}{{if IsLowBattery .BatteryData.Level}} low{{end}}"></i> <span class="value">{{.BatteryData.Level}}</span>
+            </div>
+        {{end}}
+    </div>
+    {{if .SensorData.IsEmpty}}
+        <div class="info-row"><div class="address">Waiting for data</div></div>
+    {{else}}
+        <div class="info-row">
+            <div class="address">
+                {{printf "%.2f" .SensorData.Temperature}} C &nbsp; {{CelsiusToFahrenheit .SensorData.Temperature | printf "%.2f"}} F
+                {{if .SensorData.HasHumidity}} &nbsp; <i class="bi bi-droplet-fill"></i> {{.SensorData.Humidity}}%{{end}}
+            </div>
+            <div class="timestamp"><div class="label">Updated</div><div class="value">{{RelativeTime .SensorData.LastUpdateTime}}</div></div>
+        </div>
+    {{end}}
+</div>

@@ -5,7 +5,7 @@
             {{with .RSSIData -}}
             <div class="rssi-data">
             {{/* Bootstrap icon for signal strength indication: https://icons.getbootstrap.com/icons/reception-0/ */}}
-                <div>{{.RSSI | html}}</div>
+                <div><i class="bi bi-reception-4"></i> {{.RSSI | html}}</div>
                 {{/*<div>{{.LastUpdateTime | html}}</div>*/}}
             </div>
             {{end}}

@@ -59,3 +59,7 @@
     font-size: 0.85em;
     margin-left: 5px;
 }
+
+.entity-bluetooth-device .title-row .battery-data i.low {
+    color: #d0021b;
+}

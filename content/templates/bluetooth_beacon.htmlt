@@ -3,12 +3,12 @@
         <div class="name">{{.Name | html}}</div>
         {{if not .RSSI.IsEmpty}}
             <div class="rssi-data">
-                <div>{{.RSSI.RSSI | html}}</div>
+                <div><i class="bi bi-reception-4"></i> {{.RSSI.RSSI | html}}</div>
             </div>
         {{end}}
         {{if not .Battery.IsEmpty}}
             <div class="battery-data" title="{{.Millivolts}} mV, roughly">
-                <span class="value">{{.Battery.Level}}</span>
+                <i class="bi bi-{{BatteryIcon .Battery.Level}}{{if IsLowBattery .Battery.Level}} low{{end}}"></i> <span class="value">{{.Battery.Level}}</span>
             </div>
         {{end}}
     </div>

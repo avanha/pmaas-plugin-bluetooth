@@ -543,7 +543,7 @@ func TestBeacon_IsOnThePageWithWhatWasHeardAndItsBattery(t *testing.T) {
 }
 
 func TestBeaconTemplate_ShowsTheBatteryOrSaysItIsUnknown(t *testing.T) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{"RelativeTime": RelativeTime}).ParseFS(contentFS, "content/templates/bluetooth_beacon.htmlt")
+	tmpl, err := template.New("").Funcs(template.FuncMap(beaconTemplate.FuncMap)).ParseFS(contentFS, "content/templates/bluetooth_beacon.htmlt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -562,7 +562,7 @@ func TestBeaconTemplate_ShowsTheBatteryOrSaysItIsUnknown(t *testing.T) {
 		RSSI: environmental.RSSIData{RSSI: -70, LastUpdateTime: now}, Battery: environmental.BatteryData{Level: 55, LastUpdateTime: now}, Millivolts: 2800,
 		LastPress: "double", LastPressTime: now, Presses: 3})
 
-	for _, want := range []string{"Kitchen", "Beacon button", `<span class="value">55</span>`, "2800 mV", "-70", "Last press: double", "3 in all"} {
+	for _, want := range []string{"Kitchen", "Beacon button", `<span class="value">55</span>`, "2800 mV", "-70", "bi-battery-half", "Last press: double", "3 in all"} {
 		if !strings.Contains(known, want) {
 			t.Errorf("missing %q:\n%s", want, known)
 		}
@@ -581,5 +581,66 @@ func TestBeaconTemplate_ShowsTheBatteryOrSaysItIsUnknown(t *testing.T) {
 
 	if strings.Contains(unknown, `class="battery-data"`) || strings.Contains(unknown, `class="rssi-data"`) {
 		t.Errorf("showed a battery or signal it hasn't got:\n%s", unknown)
+	}
+}
+
+func TestBatteryIcon_LooksLikeWhatIsLeft(t *testing.T) {
+	for level, want := range map[int]string{100: "battery-full", 70: "battery-full", 69: "battery-half", 30: "battery-half", 29: "battery", 0: "battery"} {
+		if got := batteryIcon(level); got != want {
+			t.Errorf("%d%% is %s, want %s", level, got, want)
+		}
+	}
+
+	if !isLowBattery(19) || isLowBattery(20) {
+		t.Error("low battery threshold")
+	}
+}
+
+func TestThermometerTemplate_ShowsTheReadingAndTheBatteryIcon(t *testing.T) {
+	tmpl, err := template.New("").Funcs(template.FuncMap(thermometerTemplate.FuncMap)).ParseFS(contentFS, "content/templates/bluetooth_thermometer.htmlt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now()
+	var out strings.Builder
+	reading := publishedWirelessThermometer{environmental.WirelessThermometer{
+		Name:        "Basement",
+		RSSIData:    environmental.RSSIData{RSSI: -60, LastUpdateTime: now},
+		BatteryData: environmental.BatteryData{Level: 15, LastUpdateTime: now},
+		SensorData:  environmental.SensorData{HasData: true, Temperature: 20, HasHumidity: true, Humidity: 45, LastUpdateTime: now},
+	}}
+
+	if err := tmpl.Lookup("bluetooth_thermometer.htmlt").Execute(&out, reading); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"Basement", "20.00 C", "68.00 F", "45%", `bi-battery low`, `<span class="value">15</span>`, "-60"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestListItems_ABeaconButtonIsListedOnceEvenWhenItAdvertisesAName(t *testing.T) {
+	config, _ := buttonConfig()
+	f := newFixture(t, config)
+
+	// Heard with a name, as it is once it advertises more than the triggers.
+	f.hear("s", buttonAddress, -70, "0201060909"+"4b4b4d2d4b455931")
+
+	beacons, devices := 0, 0
+
+	for _, item := range f.plugin.listItems() {
+		switch item.(type) {
+		case publishedBeacon:
+			beacons++
+		case publishedDevice:
+			devices++
+		}
+	}
+
+	if beacons != 1 || devices != 0 {
+		t.Errorf("%d beacons and %d devices", beacons, devices)
 	}
 }

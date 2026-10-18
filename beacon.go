@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"text/template"
 	"time"
 
 	"github.com/avanha/pmaas-spi"
@@ -14,7 +15,7 @@ import (
 
 var beaconTemplate = spi.TemplateInfo{
 	Name:    "bluetooth_beacon",
-	FuncMap: bluetoothDeviceTemplate.FuncMap,
+	FuncMap: template.FuncMap{"RelativeTime": RelativeTime, "BatteryIcon": batteryIcon, "IsLowBattery": isLowBattery},
 	Paths:   []string{"templates/bluetooth_beacon.htmlt"},
 	Styles:  []string{"css/bluetooth_device.css"},
 }
@@ -74,6 +75,22 @@ func (b *button) publish() publishedBeacon {
 	return view
 }
 
+// batteryIcon is the Bootstrap icon that looks like a battery with this much in it, and isLowBattery whether it is time to change it.
+func batteryIcon(level int) string {
+	switch {
+	case level >= 70:
+		return "battery-full"
+	case level >= 30:
+		return "battery-half"
+	default:
+		return "battery"
+	}
+}
+
+func isLowBattery(level int) bool {
+	return level < 20
+}
+
 // batteryLevel is a rough battery level from a coin cell's voltage: they hold close to their rated voltage for most of their life
 // and then fall away, which is why the steps are not even. It is what the beacon's owner wants to know (is it time to change
 // it), not a measurement.
@@ -92,6 +109,42 @@ func batteryLevel(millivolts int) int {
 	}
 
 	return 0
+}
+
+var thermometerTemplate = spi.TemplateInfo{
+	Name: "bluetooth_thermometer",
+	FuncMap: template.FuncMap{
+		"RelativeTime":        RelativeTime,
+		"BatteryIcon":         batteryIcon,
+		"IsLowBattery":        isLowBattery,
+		"CelsiusToFahrenheit": func(c float32) float32 { return c*9/5 + 32 },
+	},
+	Paths:  []string{"templates/bluetooth_thermometer.htmlt"},
+	Styles: []string{"css/bluetooth_device.css"},
+}
+
+var publishedThermometerType = reflect.TypeOf((*publishedWirelessThermometer)(nil)).Elem()
+
+func (p *plugin) thermometerRendererFactory() (spi.EntityRenderer, error) {
+	t, err := p.container.GetTemplate(&thermometerTemplate)
+	if err != nil {
+		return spi.EntityRenderer{}, fmt.Errorf("unable to load bluetooth_thermometer template: %v", err)
+	}
+
+	renderer := func(w io.Writer, entity any) error {
+		thermometer, ok := entity.(publishedWirelessThermometer)
+		if !ok {
+			return errors.New("item is not an instance of publishedWirelessThermometer")
+		}
+
+		if err := t.Instance.Execute(w, thermometer); err != nil {
+			return fmt.Errorf("unable to execute bluetooth_thermometer template: %w", err)
+		}
+
+		return nil
+	}
+
+	return spi.EntityRenderer{StreamingRenderFunc: renderer, Styles: t.Styles, Scripts: t.Scripts}, nil
 }
 
 func (p *plugin) beaconRendererFactory() (spi.EntityRenderer, error) {
