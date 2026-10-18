@@ -256,8 +256,12 @@ func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 		return
 	}
 
-	p.log.Debug("heard a frame of a press", "name", b.config.name, "press", press, "source", a.Source, "rssi", a.RSSI,
-		"behind", now.Sub(a.Time), "sincePreviousFrame", now.Sub(previous))
+	attrs := []any{"name", b.config.name, "press", press, "source", a.Source, "rssi", a.RSSI, "behind", now.Sub(a.Time)}
+	if !previous.IsZero() {
+		attrs = append(attrs, "sincePreviousFrame", now.Sub(previous))
+	}
+
+	p.log.Debug("heard a frame of a press", attrs...)
 
 	last, heard := b.lastFrame[press]
 	b.lastFrame[press] = now
