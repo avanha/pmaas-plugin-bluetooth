@@ -1,7 +1,6 @@
 package bluetooth
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
@@ -103,7 +102,7 @@ func (p *plugin) ingest(a bluetooth.AdvertisementEvent) {
 
 	if dev.parser == nil {
 		if chosen := parser.Choose(dev.known); chosen != nil {
-			fmt.Printf("%T %s (%s) is a %s\n", p, dev.Name, dev.Address, chosen.MakeAndModel)
+			p.log.Debug("device identified", "name", dev.Name, "address", dev.Address, "makeAndModel", chosen.MakeAndModel)
 
 			dev.parser = chosen
 			p.applyDeviceType(dev, chosen.Type, chosen.MakeAndModel)
@@ -239,11 +238,11 @@ func (p *plugin) ageDevices(now time.Time) {
 
 // forget lets go of a device, and the entity that was registered for it.
 func (p *plugin) forget(dev *device) {
-	fmt.Printf("Forgetting device %s (%s), last updated at %v\n", dev.Name, dev.Address, dev.LastUpdateTime)
+	p.log.Debug("forgetting device", "name", dev.Name, "address", dev.Address, "lastUpdate", dev.LastUpdateTime)
 
 	if dev.PmaasEntityId != "" {
 		if err := p.container.DeregisterEntity(dev.PmaasEntityId); err != nil {
-			fmt.Printf("Device %s (%s) could not be deregistered: %v\n", dev.Name, dev.Address, err)
+			p.log.Error("device could not be deregistered", "name", dev.Name, "address", dev.Address, "error", err)
 		}
 	}
 

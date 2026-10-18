@@ -192,7 +192,7 @@ func (p *plugin) startButtons() {
 		id, err := p.container.RegisterEntity(configured.address, spidevice.IButtonType, configured.name,
 			func() (any, error) { return b.stub, nil })
 		if err != nil {
-			fmt.Printf("%T button %s (%s) could not be registered: %v\n", p, configured.name, configured.address, err)
+			p.log.Error("button could not be registered", "name", configured.name, "address", configured.address, "error", err)
 
 			continue
 		}
@@ -203,7 +203,7 @@ func (p *plugin) startButtons() {
 
 		event := spicommon.StubAvailableEvent[spidevice.IButton]{EntityEvent: b.entityEvent(), EntityStub: b.stub}
 		if err := configured.stub.Provide(p.container, event); err != nil {
-			fmt.Printf("%T %v\n", p, err)
+			p.log.Error("unable to provide the button stub", "error", err)
 		}
 	}
 }
@@ -214,7 +214,7 @@ func (p *plugin) stopButtons() {
 		b.config.stub.Withdraw()
 
 		if err := p.container.DeregisterEntity(b.id); err != nil {
-			fmt.Printf("%T button %s could not be deregistered: %v\n", p, b.config.name, err)
+			p.log.Error("button could not be deregistered", "name", b.config.name, "error", err)
 		}
 
 		b.stub.wrapper.Store(nil)
@@ -251,7 +251,7 @@ func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 	b.data.Presses++
 	b.data.LastPress, b.data.LastPressTime = press, now
 
-	fmt.Printf("%T button %s: %s press\n", p, b.config.name, press)
+	p.log.Debug("button pressed", "name", b.config.name, "press", press)
 
 	p.broadcast(b.id, spidevice.ButtonPressedEvent{EntityEvent: b.entityEvent(), Press: press, Time: now, Count: b.data.Presses})
 	p.broadcast(b.id, events.EntityStateChangedEvent{EntityEvent: b.entityEvent(), NewState: b.data})
@@ -259,6 +259,6 @@ func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 
 func (p *plugin) broadcast(id string, event any) {
 	if err := p.container.BroadcastEvent(id, event); err != nil {
-		fmt.Printf("%T unable to broadcast %T: %v\n", p, event, err)
+		p.log.Error("unable to broadcast", "type", fmt.Sprintf("%T", event), "error", err)
 	}
 }

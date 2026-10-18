@@ -1,7 +1,6 @@
 package bluetooth
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/parser"
@@ -44,6 +43,6 @@ func (p *plugin) publishInterest() {
 	}
 
 	if err := bluetooth.PublishInterestEvent(p.container, event); err != nil {
-		fmt.Printf("%T unable to say what is wanted: %v\n", p, err)
+		p.log.Error("unable to say what is wanted", "error", err)
 	}
 }

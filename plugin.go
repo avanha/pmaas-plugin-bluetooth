@@ -4,7 +4,9 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/avanha/pmaas-spi/logging"
 	"io"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"sort"
@@ -127,6 +129,7 @@ func (d publishedWirelessThermometer) GetWirelessThermometerData() environmental
 // plugin takes the advertisements the sources hear, works out what the devices are, and publishes them. Everything it owns
 // belongs to the plugin goroutine: advertisements are delivered to it there, and the page asks it for a snapshot.
 type plugin struct {
+	log       *slog.Logger
 	container spi.IPMAASContainer
 	devices   map[string]*device
 
@@ -223,6 +226,7 @@ func (p *plugin) ShortName() string {
 
 func (p *plugin) Init(container spi.IPMAASContainer) {
 	p.container = container
+	p.log = logging.For(container)
 	container.ProvideContentFS(&contentFS, "content")
 	container.EnableStaticContent("static")
 	container.AddRoute("", p.HandleHttpList)
@@ -234,7 +238,7 @@ func (p *plugin) HandleHttpList(w http.ResponseWriter, r *http.Request) {
 	// Asked for on the plugin goroutine, which owns the devices.
 	items, err := spi.Exec(p.container, p.listItems)
 	if err != nil {
-		fmt.Printf("%T unable to list the devices: %v\n", p, err)
+		p.log.Error("unable to list the devices", "error", err)
 		items = nil
 	}
 
@@ -289,7 +293,7 @@ func ChoosePublishedDeviceName(dev *device) string {
 }
 
 func (p *plugin) Start() {
-	fmt.Printf("%T Starting...\n", p)
+	p.log.Info("starting")
 
 	p.container.RegisterEntityRenderer(
 		reflect.TypeOf((*publishedDevice)(nil)).Elem(), p.bluetoothDeviceRendererFactory)
@@ -318,7 +322,7 @@ func (p *plugin) Start() {
 	} {
 		handle, err := p.container.RegisterEventReceiver(r.predicate, r.receiver)
 		if err != nil {
-			fmt.Printf("%T unable to listen for %s: %v\n", p, r.what, err)
+			p.log.Error("unable to listen", "what", r.what, "error", err)
 
 			continue
 		}
@@ -328,18 +332,18 @@ func (p *plugin) Start() {
 
 	p.publishInterest()
 
-	fmt.Printf("%T Started...\n", p)
+	p.log.Info("started")
 }
 
 // Stop runs on the plugin goroutine. There is nothing to wait for: the sources are other plugins, and the advertisements
 // arrive on this goroutine.
 func (p *plugin) Stop() chan func() {
-	fmt.Printf("%T Stopping...\n", p)
+	p.log.Info("stopping")
 
 	if len(p.receivers) > 0 {
 		for _, handle := range p.receivers {
 			if err := p.container.DeregisterEventReceiver(handle); err != nil {
-				fmt.Printf("%T unable to stop listening: %v\n", p, err)
+				p.log.Error("unable to stop listening", "error", err)
 			}
 		}
 
@@ -347,7 +351,7 @@ func (p *plugin) Stop() chan func() {
 
 		// Nothing is wanted any more.
 		if err := bluetooth.PublishInterest(p.container, p.ShortName(), nil, false); err != nil {
-			fmt.Printf("%T unable to say that nothing is wanted: %v\n", p, err)
+			p.log.Error("unable to say that nothing is wanted", "error", err)
 		}
 	}
 
@@ -358,10 +362,9 @@ func (p *plugin) Stop() chan func() {
 			err := p.container.DeregisterEntity(dev.PmaasEntityId)
 
 			if err == nil {
-				fmt.Printf("Sucessfully deregistered %s (%s) with id %s\n", dev.Name, dev.Address, dev.PmaasEntityId)
+				p.log.Debug("deregistered device", "name", dev.Name, "address", dev.Address, "pmaasEntityId", dev.PmaasEntityId)
 			} else {
-				fmt.Printf("Device %s (%s) with id %s could not be deregistered: %v\n",
-					dev.Name, dev.Address, dev.PmaasEntityId, err)
+				p.log.Error("device could not be deregistered", "name", dev.Name, "address", dev.Address, "pmaasEntityId", dev.PmaasEntityId, "error", err)
 			}
 		}
 	}
@@ -415,7 +418,7 @@ func (p *plugin) registerDevice(dev *device) {
 	id, err := p.container.RegisterEntity(dev.Address, entityType, dev.LocalName, nil)
 
 	if err != nil {
-		fmt.Printf("Device %s could not be registered: %v\n", dev.Address, err)
+		p.log.Error("device could not be registered", "address", dev.Address, "error", err)
 		return
 	}
 
@@ -442,7 +445,7 @@ func (p *plugin) broadcastStateChangedEvent(dev *device) {
 	err := p.container.BroadcastEvent(dev.PmaasEntityId, event)
 
 	if err != nil {
-		fmt.Printf("Failed to broadcast EntityStateChangedEvent: %v", err)
+		p.log.Error("failed to broadcast EntityStateChangedEvent", "error", err)
 	}
 }
 
