@@ -1,0 +1,30 @@
+<div class="entity-bluetooth-device entity-bluetooth-beacon">
+    <div class="title-row">
+        <div class="name">{{.Name | html}}</div>
+        {{if not .RSSI.IsEmpty}}
+            <div class="rssi-data">
+                <div>{{.RSSI.RSSI | html}}</div>
+            </div>
+        {{end}}
+        {{if not .Battery.IsEmpty}}
+            <div class="battery-data" title="{{.Millivolts}} mV, roughly">
+                <span class="value">{{.Battery.Level}}</span>
+            </div>
+        {{end}}
+    </div>
+    <div class="info-row">
+        <div class="address">{{.Address | html}} <span class="kind">{{.Kind | html}}</span></div>
+        <div class="timestamp">
+            <div class="label">Heard</div>
+            <div class="value">{{if .Heard}}{{RelativeTime .LastHeard}}{{else}}not yet{{end}}</div>
+        </div>
+    </div>
+    <div class="info-row">
+        <div class="address">
+            {{if .LastPress}}Last press: {{.LastPress | html}}, {{RelativeTime .LastPressTime}} ago ({{.Presses}} in all){{else}}Not pressed yet{{end}}
+        </div>
+        {{if .Battery.IsEmpty}}
+            <div class="timestamp"><div class="value" title="The beacon only says its battery in an Eddystone-TLM frame: give one of its slots to it, always advertising.">battery unknown</div></div>
+        {{end}}
+    </div>
+</div>

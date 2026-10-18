@@ -53,3 +53,9 @@
     color: grey;
     font-size: 0.85em;
 }
+
+.entity-bluetooth-device .info-row .address .kind {
+    color: grey;
+    font-size: 0.85em;
+    margin-left: 5px;
+}

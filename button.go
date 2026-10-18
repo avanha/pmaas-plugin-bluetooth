@@ -8,6 +8,7 @@ import (
 	"github.com/avanha/pmaas-spi/bluetooth"
 	spicommon "github.com/avanha/pmaas-spi/common"
 	spidevice "github.com/avanha/pmaas-spi/device"
+	environmental "github.com/avanha/pmaas-spi/environment"
 	"github.com/avanha/pmaas-spi/events"
 )
 
@@ -155,6 +156,13 @@ type button struct {
 	// of one that was already announced.
 	lastFrame map[spidevice.ButtonPress]time.Time
 
+	// lastHeard is when anything was last heard from the beacon, and rssi how loudly. battery is what its Eddystone-TLM frame said,
+	// if it has sent one, and millivolts the voltage it gave.
+	lastHeard  time.Time
+	rssi       int
+	battery    environmental.BatteryData
+	millivolts int
+
 	stub *buttonStub
 }
 
@@ -229,6 +237,14 @@ func (b *button) entityEvent() events.EntityEvent {
 
 // hear takes in an advertisement from a beacon button's address, and announces a press if it is the first frame of one.
 func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
+	now := p.now()
+	b.lastHeard, b.rssi = now, a.RSSI
+
+	if tlm, ok := bluetooth.ParseEddystoneTLM(a.ServiceData); ok && tlm.BatteryMillivolts > 0 {
+		b.millivolts = int(tlm.BatteryMillivolts)
+		b.battery = environmental.BatteryData{Level: batteryLevel(b.millivolts), LastUpdateTime: now}
+	}
+
 	frame, ok := bluetooth.ParseIBeacon(a.ManufacturerData)
 	if !ok {
 		return
@@ -239,7 +255,6 @@ func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 		return
 	}
 
-	now := p.now()
 	last, heard := b.lastFrame[press]
 	b.lastFrame[press] = now
 

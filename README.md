@@ -31,6 +31,18 @@ advertisement fields, tested with captured advertisements.
 
 `PluginConfig.Adapter` has moved to the BlueZ plugin.
 
+## Beacon buttons
+
+A beacon such as the BlueCharm BC011 Pro with its triggers set is a button: `config.AddBeaconButton(address, name)` and say
+which iBeacon frame is which press (`.Single(...)`, `.Double(...)`, `.Triple(...)`, `.Long(...)`). Each press is announced as a
+`device.ButtonPressedEvent`, and the button is an entity (`device.IButton`) that an automation can wait for.
+
+The devices page lists each beacon button with its address, how loudly and when it was last heard, and what was last done with
+it. It also shows the battery, **if the beacon says it**: the iBeacon frames carry no battery, so give one of the beacon's slots
+to an *Eddystone-TLM* frame that advertises all the time (in the KBeaconPro app, a slot of type "Eddystone TLM"; the beacon then
+also stays connectable). The voltage it reports is turned into a rough percentage, since a coin cell holds its voltage until near
+the end; hover over the percentage for the voltage. Until a TLM frame has been heard the page says the battery is unknown.
+
 ## Notes
 
 This is my oldest plugin, so it isn't exactly the be Go code or all that well organized. 

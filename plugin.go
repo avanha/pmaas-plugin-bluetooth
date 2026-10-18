@@ -249,6 +249,10 @@ func (p *plugin) HandleHttpList(w http.ResponseWriter, r *http.Request) {
 func (p *plugin) listItems() []interface{} {
 	publishedDevices := make([]Sortable, 0)
 
+	for _, b := range p.buttons {
+		publishedDevices = append(publishedDevices, b.publish())
+	}
+
 	for _, device := range p.devices {
 		if device.ReportedName == "" && device.LocalName == "" {
 			continue
@@ -297,6 +301,8 @@ func (p *plugin) Start() {
 
 	p.container.RegisterEntityRenderer(
 		reflect.TypeOf((*publishedDevice)(nil)).Elem(), p.bluetoothDeviceRendererFactory)
+
+	p.container.RegisterEntityRenderer(publishedBeaconType, p.beaconRendererFactory)
 
 	p.startButtons()
 

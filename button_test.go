@@ -2,7 +2,10 @@ package bluetooth
 
 import (
 	"fmt"
+	environmental "github.com/avanha/pmaas-spi/environment"
+	"html/template"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -460,5 +463,123 @@ func TestBeaconButton_WhichWhenTwoFramesAreEquallySpecificTheFirstKindOfPressWin
 		if press, ok := b.which(bluetooth.IBeacon{UUID: singleUUID, Major: 1, Minor: 1}); !ok || press != spidevice.PressSingle {
 			t.Fatalf("%v %v", press, ok)
 		}
+	}
+}
+
+// tlmFrame is the advertising data of an Eddystone-TLM frame with the battery at the given voltage.
+func tlmFrame(millivolts uint16) string {
+	return fmt.Sprintf("0201060303aafe1116aafe2000%04x1880000001000000ffff", millivolts)
+}
+
+func TestBatteryLevel_FallsAwayAsTheVoltageDoes(t *testing.T) {
+	last := 101
+
+	for _, mv := range []int{3300, 3000, 2950, 2900, 2850, 2800, 2700, 2650, 2600, 2500, 2400, 2200, 2000, 1500} {
+		got := batteryLevel(mv)
+		if got < 0 || got > 100 || got > last {
+			t.Errorf("%d mV is %d%% after %d%%", mv, got, last)
+		}
+
+		last = got
+	}
+
+	for mv, want := range map[int]int{3300: 100, 3000: 100, 2900: 80, 2800: 55, 2400: 5, 2000: 0, 1000: 0, 2950: 90} {
+		if got := batteryLevel(mv); got != want {
+			t.Errorf("%d mV is %d%%, want %d%%", mv, got, want)
+		}
+	}
+}
+
+func TestBeacon_IsOnThePageWithWhatWasHeardAndItsBattery(t *testing.T) {
+	config, _ := buttonConfig()
+	f := newFixture(t, config)
+
+	items := func() []publishedBeacon {
+		var beacons []publishedBeacon
+
+		for _, item := range f.plugin.listItems() {
+			if b, ok := item.(publishedBeacon); ok {
+				beacons = append(beacons, b)
+			}
+		}
+
+		return beacons
+	}
+
+	// Before anything is heard it is there, saying so.
+	beacons := items()
+	if len(beacons) != 1 || beacons[0].Name != "Kitchen" || beacons[0].Address != buttonAddress || beacons[0].Heard ||
+		!beacons[0].Battery.IsEmpty() || beacons[0].LastPress != "" {
+		t.Fatalf("before: %+v", beacons)
+	}
+
+	f.advance(time.Minute)
+	f.hear("s", buttonAddress, -71, tlmFrame(2800))
+
+	b := items()[0]
+	if !b.Heard || !b.LastHeard.Equal(f.clock) || b.RSSI.RSSI != -71 || b.Battery.Level != 55 || b.Millivolts != 2800 || b.LastPress != "" {
+		t.Errorf("after a telemetry frame: %+v", b)
+	}
+
+	// A telemetry frame that doesn't give a voltage (a beacon with no battery gauge says 0) is not a flat battery.
+	f.hear("s", buttonAddress, -71, tlmFrame(0))
+
+	if b := items()[0]; b.Battery.Level != 55 || b.Millivolts != 2800 {
+		t.Errorf("after a frame with no voltage: %+v", b)
+	}
+
+	// A press is heard too, and doesn't forget the battery.
+	f.advance(time.Minute)
+	f.hear("s", buttonAddress, -80, ibeaconFrame(doubleUUID, 1, 1))
+
+	b = items()[0]
+	if b.RSSI.RSSI != -80 || b.Battery.Level != 55 || b.LastPress != "double" || b.Presses != 1 {
+		t.Errorf("after a press: %+v", b)
+	}
+
+	if len(f.container.buttonEvents()) != 1 {
+		t.Errorf("the telemetry frame was taken for a press: %v", pressesOf(f.container))
+	}
+}
+
+func TestBeaconTemplate_ShowsTheBatteryOrSaysItIsUnknown(t *testing.T) {
+	tmpl, err := template.New("").Funcs(template.FuncMap{"RelativeTime": RelativeTime}).ParseFS(contentFS, "content/templates/bluetooth_beacon.htmlt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	render := func(b publishedBeacon) string {
+		var out strings.Builder
+		if err := tmpl.Lookup("bluetooth_beacon.htmlt").Execute(&out, b); err != nil {
+			t.Fatal(err)
+		}
+
+		return out.String()
+	}
+
+	now := time.Now()
+	known := render(publishedBeacon{Name: "Kitchen", Kind: "Beacon button", Heard: true, LastHeard: now,
+		RSSI: environmental.RSSIData{RSSI: -70, LastUpdateTime: now}, Battery: environmental.BatteryData{Level: 55, LastUpdateTime: now}, Millivolts: 2800,
+		LastPress: "double", LastPressTime: now, Presses: 3})
+
+	for _, want := range []string{"Kitchen", "Beacon button", `<span class="value">55</span>`, "2800 mV", "-70", "Last press: double", "3 in all"} {
+		if !strings.Contains(known, want) {
+			t.Errorf("missing %q:\n%s", want, known)
+		}
+	}
+
+	if strings.Contains(known, "battery unknown") {
+		t.Error("said the battery is unknown")
+	}
+
+	unknown := render(publishedBeacon{Name: "Kitchen", Kind: "Beacon button"})
+	for _, want := range []string{"battery unknown", "not yet", "Not pressed yet"} {
+		if !strings.Contains(unknown, want) {
+			t.Errorf("missing %q:\n%s", want, unknown)
+		}
+	}
+
+	if strings.Contains(unknown, `class="battery-data"`) || strings.Contains(unknown, `class="rssi-data"`) {
+		t.Errorf("showed a battery or signal it hasn't got:\n%s", unknown)
 	}
 }
