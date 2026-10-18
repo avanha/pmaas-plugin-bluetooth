@@ -108,7 +108,7 @@ func TestAddBeaconButton_MistakesPanic(t *testing.T) {
 			c := NewPluginConfig()
 			c.AddBeaconButton(buttonAddress, "x").Single(bluetooth.MatchIBeacon(singleUUID)).Double(bluetooth.MatchIBeacon(singleUUID))
 		},
-		"a frame with no uuid": func() {
+		"a frame that says nothing": func() {
 			c := NewPluginConfig()
 			c.AddBeaconButton(buttonAddress, "x").Single(bluetooth.IBeaconMatch{})
 		},
@@ -381,6 +381,41 @@ func TestButton_ARunningPluginKeepsItsButtonsAcrossTheMinute(t *testing.T) {
 	}
 
 	_ = events.EventInfo{}
+}
+
+func TestAddBeaconButton_TheSlotsCanBeToldApartByMajorAlone(t *testing.T) {
+	// As the beacon is configured: each press in the slot of that number, with a major to match, and the UUID not mattering.
+	config := NewPluginConfig()
+	config.AddBeaconButton(buttonAddress, "Couch").
+		Single(bluetooth.MatchAnyIBeacon().WithMajor(0)).
+		Double(bluetooth.MatchAnyIBeacon().WithMajor(1)).
+		Triple(bluetooth.MatchAnyIBeacon().WithMajor(2)).
+		Long(bluetooth.MatchAnyIBeacon().WithMajor(3))
+
+	f := newFixture(t, config)
+
+	for _, frame := range []string{
+		ibeaconFrame(singleUUID, 0, 1), ibeaconFrame(doubleUUID, 1, 1), ibeaconFrame(tripleUUID, 2, 1), ibeaconFrame(longUUID, 3, 1),
+		ibeaconFrame(singleUUID, 4, 1), // a slot that is not a press
+	} {
+		f.advance(10 * time.Second)
+		f.hear("s", buttonAddress, -90, frame)
+	}
+
+	if got := pressesOf(f.container); !reflect.DeepEqual(got, []string{"single", "double", "triple", "long"}) {
+		t.Errorf("presses %v", got)
+	}
+}
+
+func TestAddBeaconButton_AMatchThatSaysNothingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("no panic")
+		}
+	}()
+
+	c := NewPluginConfig()
+	c.AddBeaconButton(buttonAddress, "x").Single(bluetooth.MatchAnyIBeacon())
 }
 
 func TestAddBeaconButton_TheMoreSpecificFrameWinsWhateverTheOrderOfPresses(t *testing.T) {

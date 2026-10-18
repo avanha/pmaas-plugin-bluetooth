@@ -105,8 +105,8 @@ func (b *BeaconButton) Burst(burst time.Duration) *BeaconButton {
 }
 
 func (b *BeaconButton) press(press spidevice.ButtonPress, frame bluetooth.IBeaconMatch) *BeaconButton {
-	if frame.UUID == "" {
-		panic(fmt.Sprintf("bluetooth: button %q: the %s press needs a frame: use bluetooth.MatchIBeacon", b.name, press))
+	if frame.IsEmpty() {
+		panic(fmt.Sprintf("bluetooth: button %q: the %s press needs a frame that says something: use bluetooth.MatchIBeacon or MatchAnyIBeacon with WithMajor", b.name, press))
 	}
 
 	for other, existing := range b.frames {
@@ -137,16 +137,7 @@ func (b *BeaconButton) which(frame bluetooth.IBeacon) (spidevice.ButtonPress, bo
 			continue
 		}
 
-		score := 0
-		if match.Major != nil {
-			score++
-		}
-
-		if match.Minor != nil {
-			score++
-		}
-
-		if score > specificity {
+		if score := match.Specificity(); score > specificity {
 			found, specificity = press, score
 		}
 	}
