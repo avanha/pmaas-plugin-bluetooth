@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
+	"github.com/avanha/pmaas-plugin-bluetooth/parser"
 	"github.com/avanha/pmaas-spi/bluetooth"
 	spidevice "github.com/avanha/pmaas-spi/device"
 )
@@ -68,6 +69,18 @@ func (c *PluginConfig) AddBeaconButton(address string, name string) *BeaconButto
 // bluetooth plugin asks the sources for it. The address is any case, with ":" or "-"; it panics if it is not an address or
 // has been added already, like regexp.MustCompile does for a pattern that can't be: it is written in the program.
 func (c *PluginConfig) AddThermometer(address string, name string) {
+	c.addThermometer(address, name, nil)
+}
+
+// AddInkbirdThermometer is AddThermometer for an Inkbird IBS-TH, whose address you say is one. It is told what it is, instead of
+// working it out: an Inkbird is known by the name "sps", which it only gives in a scan response, and the sources scan passively
+// unless ActiveScan is set, so without this its readings would never be decoded. (The service UUID it lists is also used by
+// other gadgets, so it is not a safe thing to recognise it by.)
+func (c *PluginConfig) AddInkbirdThermometer(address string, name string) {
+	c.addThermometer(address, name, parser.Inkbird)
+}
+
+func (c *PluginConfig) addThermometer(address string, name string, known *parser.Parser) {
 	normal, ok := bluetooth.NormalizeAddress(address)
 	if !ok {
 		panic(fmt.Sprintf("Device address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
@@ -84,9 +97,15 @@ func (c *PluginConfig) AddThermometer(address string, name string) {
 		}
 	}
 
-	c.devices[normal] = &device{
+	configured := &device{
 		Address:    normal,
 		LocalName:  name,
 		DeviceType: common.Thermometer,
 	}
+
+	if known != nil {
+		configured.parser, configured.DeviceType, configured.DeviceMakeAndModel = known, known.Type, known.MakeAndModel
+	}
+
+	c.devices[normal] = configured
 }

@@ -50,6 +50,12 @@ The plugin asks its sources to scan passively. Set `config.ActiveScan = true` fo
 radio more and can miss the brief burst of a beacon button. The Govee thermometers and beacon buttons need nothing but passive.
 An ESPHome proxy is switched to the mode the plugin asks for when it connects, whatever its YAML says.
 
+**Inkbird IBS-TH.** It gives its name (`sps`) only in a scan response, and the plugin recognises it by that name, so a passive scan
+never identifies it and none of its frames are forwarded. Configure it by address and say what it is:
+`config.AddInkbirdThermometer("49:22:01:23:0A:1B", "Patio")`. It is then decoded from its readings alone, which is also safer than
+recognising it by the service UUID it lists (`fff0`), a UUID other gadgets use. A new device that is not recognised is worth a look
+with `ActiveScan` on: turn it on while finding out what a device advertises, and off again once it is configured.
+
 ## Notes
 
 This is my oldest plugin, so it isn't exactly the be Go code or all that well organized. 

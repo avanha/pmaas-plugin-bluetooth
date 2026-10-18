@@ -801,3 +801,76 @@ func TestInterest_ScansPassivelyUnlessTheAssemblyAsksForActive(t *testing.T) {
 		}
 	}
 }
+
+// What a passive scan hears of an Inkbird: no name, which is only in the scan response.
+const inkbirdPassiveFrame = "0201060302f0ff0aff6607970f0099606408"
+
+func TestAddInkbirdThermometer_IsDecodedWithoutTheNameItGivesOnlyInAScanResponse(t *testing.T) {
+	config := NewPluginConfig()
+	config.AddInkbirdThermometer("49-22-01-23-0a-1b", "Patio")
+	f := newFixture(t, config)
+
+	// It is a thermometer, and known for what it is, from the start.
+	dev := f.device(inkbirdAddres)
+	if dev.DeviceType != common.ThermometerAndHygrometer || dev.DeviceMakeAndModel != "Inkbird IBS-TH" || dev.LocalName != "Patio" {
+		t.Fatalf("before: %+v", dev)
+	}
+
+	f.hear("src1", inkbirdAddres, -90, inkbirdPassiveFrame)
+
+	state := lastState(t, f.container)
+	if state.SensorData.Temperature != 18.94 || state.SensorData.Humidity != 39.91 || state.BatteryData.Level != 100 || state.Name != "Patio" {
+		t.Errorf("state %+v", state)
+	}
+}
+
+func TestAddInkbirdThermometer_TheSourcesAreAskedForItByAddress(t *testing.T) {
+	config := NewPluginConfig()
+	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	f := newFixture(t, config)
+
+	found := false
+
+	for _, interest := range f.container.interests() {
+		for _, rule := range interest.Rules {
+			if rule.Address == inkbirdAddres {
+				found = true
+			}
+		}
+	}
+
+	if !found {
+		t.Error("nobody was asked for the Inkbird's address")
+	}
+}
+
+func TestAdvertisement_AnInkbirdNobodyConfiguredIsNotGuessedFromItsServiceAlone(t *testing.T) {
+	f := newFixture(t, NewPluginConfig())
+
+	f.hear("src1", inkbirdAddres, -90, inkbirdPassiveFrame)
+
+	if dev := f.device(inkbirdAddres); dev != nil && (dev.DeviceType != common.Unknown || dev.DeviceMakeAndModel != "") {
+		t.Errorf("identified from a generic service UUID: %+v", dev)
+	}
+}
+
+func TestAddInkbirdThermometer_MistakesPanic(t *testing.T) {
+	for name, mistake := range map[string]func(){
+		"not an address": func() { c := NewPluginConfig(); c.AddInkbirdThermometer("nope", "x") },
+		"added twice": func() {
+			c := NewPluginConfig()
+			c.AddInkbirdThermometer(inkbirdAddres, "x")
+			c.AddThermometer(inkbirdAddres, "y")
+		},
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s didn't panic", name)
+				}
+			}()
+
+			mistake()
+		}()
+	}
+}

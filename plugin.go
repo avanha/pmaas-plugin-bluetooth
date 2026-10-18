@@ -176,6 +176,9 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 			Address:    dev.Address,
 			LocalName:  dev.LocalName,
 			DeviceType: dev.DeviceType,
+			parser:     dev.parser,
+
+			DeviceMakeAndModel: dev.DeviceMakeAndModel,
 			WirelessThermometer: environmental.WirelessThermometer{
 				Name: dev.LocalName,
 			},
