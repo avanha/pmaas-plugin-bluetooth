@@ -17,6 +17,11 @@ func (p *plugin) interest() []bluetooth.Rule {
 		rules = append(rules, bluetooth.Rule{Name: "configured " + address, Address: address})
 	}
 
+	// A button's every frame, as it is heard: the first of a burst is the press, and nothing may wait.
+	for _, button := range p.beaconButtons {
+		rules = append(rules, bluetooth.Rule{Name: "button " + button.name, Address: button.address, Latency: bluetooth.Immediate})
+	}
+
 	return rules
 }
 

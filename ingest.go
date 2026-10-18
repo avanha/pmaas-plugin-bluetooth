@@ -54,6 +54,10 @@ func (p *plugin) onSighting(eventInfo *events.EventInfo) error {
 }
 
 func (p *plugin) ingest(a bluetooth.AdvertisementEvent) {
+	if b, ok := p.buttons[a.Address]; ok {
+		p.hearButton(b, a)
+	}
+
 	now := p.now()
 	changed := false
 

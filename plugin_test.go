@@ -40,6 +40,7 @@ type fakeContainer struct {
 	mu           sync.Mutex
 	entities     map[string]reflect.Type
 	entityIds    []string
+	factories    map[string]spi.EntityStubFactoryFunc
 	deregistered []string
 	receivers    map[int]receiver
 	off          []int
@@ -56,9 +57,15 @@ func (c *fakeContainer) EnableStaticContent(string)                             
 func (c *fakeContainer) AddRoute(string, http.HandlerFunc)                              {}
 func (c *fakeContainer) RegisterEntityRenderer(reflect.Type, spi.EntityRendererFactory) {}
 
-func (c *fakeContainer) RegisterEntity(uniqueData string, entityType reflect.Type, _ string, _ spi.EntityStubFactoryFunc) (string, error) {
+func (c *fakeContainer) RegisterEntity(uniqueData string, entityType reflect.Type, _ string, factory spi.EntityStubFactoryFunc) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if c.factories == nil {
+		c.factories = map[string]spi.EntityStubFactoryFunc{}
+	}
+
+	c.factories[uniqueData] = factory
 
 	id := fmt.Sprintf("bluetooth_%d", len(c.entityIds)+1)
 	c.entityIds = append(c.entityIds, id)
@@ -105,8 +112,10 @@ func (c *fakeContainer) BroadcastEvent(_ string, event any) error {
 	return nil
 }
 
+// EnqueueOnPluginGoRoutine runs the function on a goroutine of its own, as the real one does on the plugin's: a call that waits
+// for the result (spi.Exec, a stub's) would never get it if the function ran before the caller started to wait.
 func (c *fakeContainer) EnqueueOnPluginGoRoutine(f func()) error {
-	f()
+	go f()
 
 	return nil
 }

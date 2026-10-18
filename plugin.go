@@ -139,6 +139,10 @@ type plugin struct {
 	// listAll is whether to ask the sources for sightings of every device they hear.
 	listAll bool
 
+	// beaconButtons are the buttons the assembly named, and buttons the ones being watched, by address.
+	beaconButtons []*BeaconButton
+	buttons       map[string]*button
+
 	now func() time.Time
 }
 
@@ -147,7 +151,20 @@ type BluetoothPlugin interface {
 }
 
 func NewPlugin(config PluginConfig) BluetoothPlugin {
-	instance := &plugin{devices: make(map[string]*device), now: time.Now, listAll: config.ListAllDevices}
+	instance := &plugin{
+		devices:       make(map[string]*device),
+		now:           time.Now,
+		listAll:       config.ListAllDevices,
+		beaconButtons: config.buttons,
+		buttons:       make(map[string]*button),
+	}
+
+	for _, configured := range config.buttons {
+		if len(configured.frames) == 0 {
+			panic(fmt.Sprintf("bluetooth: the button %q (%s) needs at least one press: say which frame is Single, Double, Triple or Long",
+				configured.name, configured.address))
+		}
+	}
 
 	for address, dev := range config.devices {
 		instance.devices[address] = &device{
@@ -277,6 +294,8 @@ func (p *plugin) Start() {
 	p.container.RegisterEntityRenderer(
 		reflect.TypeOf((*publishedDevice)(nil)).Elem(), p.bluetoothDeviceRendererFactory)
 
+	p.startButtons()
+
 	// Register any pre-configured devices
 	for _, dev := range p.devices {
 		p.registerDevice(dev)
@@ -331,6 +350,8 @@ func (p *plugin) Stop() chan func() {
 			fmt.Printf("%T unable to say that nothing is wanted: %v\n", p, err)
 		}
 	}
+
+	p.stopButtons()
 
 	for _, dev := range p.devices {
 		if dev.PmaasEntityId != "" {

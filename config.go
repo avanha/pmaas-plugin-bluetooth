@@ -5,6 +5,7 @@ import (
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
 	"github.com/avanha/pmaas-spi/bluetooth"
+	spidevice "github.com/avanha/pmaas-spi/device"
 )
 
 // PluginConfig configures the plugin. Where advertisements are heard is not its business: add a source plugin for each place
@@ -21,6 +22,7 @@ type PluginConfig struct {
 	ListAllDevices bool
 
 	devices map[string]*device
+	buttons []*BeaconButton
 }
 
 func NewPluginConfig() PluginConfig {
@@ -29,6 +31,31 @@ func NewPluginConfig() PluginConfig {
 		ListAllDevices:    true,
 		devices:           make(map[string]*device),
 	}
+}
+
+// AddBeaconButton adds a button that is a Bluetooth beacon (see BeaconButton), by the beacon's address, which is any case with
+// ":" or "-". Say which frame is which press on what it returns; at least one is needed. It panics if the address is not a
+// Bluetooth address or is already named, like regexp.MustCompile does for a pattern that can't be: it is written in the program.
+func (c *PluginConfig) AddBeaconButton(address string, name string) *BeaconButton {
+	normal, ok := bluetooth.NormalizeAddress(address)
+	if !ok {
+		panic(fmt.Sprintf("Button address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
+	}
+
+	if existing, ok := c.devices[normal]; ok {
+		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", normal, existing.LocalName))
+	}
+
+	for _, existing := range c.buttons {
+		if existing.address == normal {
+			panic(fmt.Sprintf("Device with address %s already registered as the button \"%s\"", normal, existing.name))
+		}
+	}
+
+	button := &BeaconButton{address: normal, name: name, burst: defaultBurst, frames: make(map[spidevice.ButtonPress]bluetooth.IBeaconMatch)}
+	c.buttons = append(c.buttons, button)
+
+	return button
 }
 
 // AddThermometer names a thermometer by its address, so that it is a thermometer from the first advertisement and the
@@ -43,6 +70,12 @@ func (c *PluginConfig) AddThermometer(address string, name string) {
 	existing, ok := c.devices[normal]
 	if ok {
 		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", normal, existing.LocalName))
+	}
+
+	for _, button := range c.buttons {
+		if button.address == normal {
+			panic(fmt.Sprintf("Device with address %s already registered as the button \"%s\"", normal, button.name))
+		}
 	}
 
 	c.devices[normal] = &device{
