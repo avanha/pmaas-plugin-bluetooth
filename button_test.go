@@ -569,14 +569,14 @@ func TestThermometerTemplate_ShowsTheReadingAndTheBatteryIcon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, want := range []string{"Basement", "20.0 C", "68.0 F", "45.0%", `bi-battery low`, `<span class="value">15</span>`, "-60"} {
+	for _, want := range []string{"Basement", "20.00 C", "68.00 F", "45.0%", `bi-battery low`, `<span class="value">15</span>`, "-60"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q:\n%s", want, out.String())
 		}
 	}
 }
 
-func TestThermometerTemplate_ShowsOneDecimalWhateverTheReadingHas(t *testing.T) {
+func TestThermometerTemplate_ShowsTwoDecimalsOfTemperatureAndOneOfHumidityWhateverTheReadingHas(t *testing.T) {
 	tmpl, err := template.New("").Funcs(template.FuncMap(thermometerTemplate.FuncMap)).ParseFS(contentFS, "content/templates/bluetooth_thermometer.htmlt")
 	if err != nil {
 		t.Fatal(err)
@@ -592,13 +592,13 @@ func TestThermometerTemplate_ShowsOneDecimalWhateverTheReadingHas(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	for _, want := range []string{"21.1 C", "70.0 F", "37.0%"} {
+	for _, want := range []string{"21.12 C", "70.02 F", "37.0%"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q:\n%s", want, out.String())
 		}
 	}
 
-	if strings.Contains(out.String(), "21.12") || strings.Contains(out.String(), "36.98") {
+	if strings.Contains(out.String(), "21.123") || strings.Contains(out.String(), "36.98") {
 		t.Errorf("too many decimal places:\n%s", out.String())
 	}
 }
