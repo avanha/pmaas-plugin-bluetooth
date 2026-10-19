@@ -4,7 +4,6 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"github.com/avanha/pmaas-spi/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +11,8 @@ import (
 	"sort"
 	"text/template"
 	"time"
+
+	"github.com/avanha/pmaas-spi/logging"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
 	"github.com/avanha/pmaas-plugin-bluetooth/parser"
@@ -34,9 +35,9 @@ var bluetoothDeviceTemplate = spi.TemplateInfo{
 	Styles: []string{"css/bluetooth_device.css"},
 }
 
-var IWirelessThermometerType = reflect.TypeOf((*environmental.IWirelessThermometer)(nil)).Elem()
+var IWirelessThermometerType = reflect.TypeFor[environmental.IWirelessThermometer]()
 
-// EnhancedSensorData Extend the spi/environment/SensorData with a locally-calculated Farenheit value
+// EnhancedSensorData Extend the spi/environment/SensorData with a locally calculated Farenheit value
 type EnhancedSensorData struct {
 	environmental.SensorData
 	TemperatureF float32
@@ -66,22 +67,22 @@ type device struct {
 	LastUpdateTime      time.Time
 	LastEventType       string
 
-	// temporary is that the address is one the device will change (see bluetooth.IsTemporaryAddress), so it is forgotten
-	// sooner than a device that keeps its own.
+	// Indicates that the device is using a temporary MAC address.  Devices with temporary addresses age out sooner.
 	temporary bool
 
-	// known is the name and services advertised so far, merged: the name comes in one advertisement and the reading in another.
-	// It is what the device is recognised by. Readings are not kept: for some devices each is a new key.
+	// Known is accumulated data about the device, including its name and services advertised so far.  The data is
+	// merged across multiple advertisements, since the name can come in one, while readings in another.  This is how
+	// we recognize devices. Readings are not kept because for some devices each reading is a new key.
 	known bluetooth.Fields
 
-	// parser is what decodes the device's advertisements, once it is known what the device is.
+	// The parser used to decode the device's advertisements once the device is identified.
 	parser *parser.Parser
 
-	// signals is how each source hears the device, by the source's entity ID.
+	// Signals tracks how each source hears the device, by the source's entity ID.
 	signals map[string]signal
 }
 
-// signal is how loudly one source last heard a device.
+// Signal captures the RSSI and time of the most recent advertisement.
 type signal struct {
 	rssi int
 	at   time.Time
@@ -186,15 +187,12 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 
 	for address, dev := range config.devices {
 		instance.devices[address] = &device{
-			Address:    dev.Address,
-			LocalName:  dev.LocalName,
-			DeviceType: dev.DeviceType,
-			parser:     dev.parser,
-
+			Address:            dev.Address,
+			LocalName:          dev.LocalName,
+			DeviceType:         dev.DeviceType,
+			parser:             dev.parser,
 			DeviceMakeAndModel: dev.DeviceMakeAndModel,
-			WirelessThermometer: environmental.WirelessThermometer{
-				Name: dev.LocalName,
-			},
+			Name:               dev.LocalName,
 		}
 
 		instance.configured = append(instance.configured, address)
@@ -214,23 +212,23 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 			LocalName: "Test Thermometer",
 
 			DeviceType: common.ThermometerAndHygrometer,
-			WirelessThermometer: environmental.WirelessThermometer{
-				Name: "Test Thermometer",
-				RSSIData: environmental.RSSIData{
-					RSSI:           -64,
-					LastUpdateTime: now,
-				},
-				BatteryData: environmental.BatteryData{
-					Level:          75,
-					LastUpdateTime: now,
-				},
-				SensorData: environmental.SensorData{
-					HasData:        true,
-					Temperature:    25.73,
-					HasHumidity:    true,
-					Humidity:       45.25,
-					LastUpdateTime: now,
-				},
+
+			// WirelessThermometer fields:
+			Name: "Test Thermometer",
+			RSSIData: environmental.RSSIData{
+				RSSI:           -64,
+				LastUpdateTime: now,
+			},
+			BatteryData: environmental.BatteryData{
+				Level:          75,
+				LastUpdateTime: now,
+			},
+			SensorData: environmental.SensorData{
+				HasData:        true,
+				Temperature:    25.73,
+				HasHumidity:    true,
+				Humidity:       45.25,
+				LastUpdateTime: now,
 			},
 			LastUpdateTime: now,
 		}
@@ -336,7 +334,7 @@ func (p *plugin) Start() {
 	p.log.Info("starting")
 
 	p.container.RegisterEntityRenderer(
-		reflect.TypeOf((*publishedDevice)(nil)).Elem(), p.bluetoothDeviceRendererFactory)
+		reflect.TypeFor[publishedDevice](), p.bluetoothDeviceRendererFactory)
 
 	p.container.RegisterEntityRenderer(publishedBeaconType, p.beaconRendererFactory)
 	p.container.RegisterEntityRenderer(publishedThermometerType, p.thermometerRendererFactory)
