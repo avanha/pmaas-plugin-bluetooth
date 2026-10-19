@@ -53,25 +53,37 @@ Models own their device-specific coalescing (state in `Device`, latency in `Rule
 `Hear` runs on this plugin's goroutine, synchronously. It must be pure and fast. The plugin wraps each call in `recover` (a
 panic disables that device and is logged) and warns when a call is slow.
 
-## Config is typed, in the assembly
+## Recognition needs no config
 
-The assembly imports the model packages. Each has its own builders, which return a `ConfiguredDevice` and validate as they are
-built, panicking on a mistake the way `regexp.MustCompile` does. The mistake is found when the assembly starts, by the person who made it.
+A device is recognized if any model passed to `Recognize` identifies it. The devices module lists everything it supports, and
+the list grows with the module, so the assembly says it once:
 
 ```go
 conf := bluetooth.NewPluginConfig()
-conf.Recognise(govee.GVH5075, inkbird.IBSTH)               // unconfigured devices, by what they advertise
-conf.Add(inkbird.Thermometer("49:22:01:23:0A:1B", "Patio")) // configured, by address
+conf.Recognize(devices.All()...)   // every model in the module: a new device type needs only a newer version
+```
+
+A vendor package has its own `govee.All()` for a subset. A third-party module is one more line: `conf.Recognize(acme.All()...)`.
+
+Config is only for what recognition can't give: a name, or a handle for automations. It is typed, in the assembly. Each package has
+builders that return a `ConfiguredDevice` and validate as they are built, panicking on a mistake the way `regexp.MustCompile` does.
+The mistake is found when the assembly starts, by the person who made it.
+
+```go
+conf.Add(inkbird.Thermometer("49:22:01:23:0A:1B", "Patio"))
 conf.Add(bluecharm.Button("DD:88:00:00:3D:36", "Couch").Double(bluetooth.MatchAnyIBeacon().WithMajor(1)))
 ```
 
-A builder's result can also be the entity's handle, as `BeaconButton` is now (`EntityId()`, `GetButtonData()`).
+A configured device carries its own model, so it works even if that model isn't in `Recognize`. A builder's result can also be the
+entity's handle, as `BeaconButton` is now (`EntityId()`, `GetButtonData()`).
 
 Active-scan windows follow `NeedsScanResponse()` of the configured devices, as now.
 
 ## Registration: none
 
 Models are passed in config, so there is no discovery between plugins, no start order, and no version check beyond the compiler.
+The alternative to `Recognize(devices.All()...)` is `init()` registration, as `database/sql` drivers do it: a blank import registers
+every model. It needs no call at all, at the price of a global registry and recognition that depends on what is imported.
 
 If models ever have to arrive independently of the assembly (plugins started and stopped at runtime), they can be offered as an
 entity and found the way dblog finds trackables: register for entity events, then `GetEntities`. Nothing here prevents that.
