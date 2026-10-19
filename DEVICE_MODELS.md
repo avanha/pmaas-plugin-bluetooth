@@ -26,11 +26,11 @@ type DeviceModel interface {
     New() Device
 }
 
-// A device the assembly configured, by address.
+// A device the assembly configured. Usually claimed by a fixed address; a phone's changes, so claiming is a question.
 type ConfiguredDevice interface {
-    Address() string
     Name() string
-    Rules() []Rule
+    Claims(a *AdvertisementEvent) bool // asked once per new address, then cached
+    Rules() []Rule                     // may grow: a claimed address is added so it is heard often
     NeedsScanResponse() bool
     New() Device
 }
@@ -45,6 +45,7 @@ type Result struct {
     Reading *Environment  // temperature, humidity
     Presses []ButtonPress
 }
+// Anything heard from a claimed device also counts as "seen", with its RSSI and source, whatever the Result says.
 ```
 
 Models own their device-specific coalescing (state in `Device`, latency in `Rules`). The generic payload dedupe stays in spi's
@@ -98,6 +99,28 @@ so neither is device knowledge. The plugin core only turns any model's presses i
 
 Vendor parts move: the KKM System frame (and its model/firmware) goes to a BlueCharm package that supplies battery. Other
 vendors' buttons (BTHome, say) are packages that emit presses.
+
+## Presence (not in v1, but not boxed out)
+
+A phone or wearable as a presence indicator splits into two parts the design already separates:
+
+* **Identity** is a model's or builder's job: which advertisements are this device. A fixed address, an iBeacon match (a companion
+  app's transmitter), or a resolvable private address checked against the owner's IRK (a standard; a helper in spi, since phones
+  rotate their address about every 15 minutes and the key is the only way to follow it). Hence `Claims` and not a fixed `Address()`.
+* **State** is generic and lives in this plugin: present, away or unknown, from RSSI thresholds, hysteresis and "away after N
+  minutes", plus the per-source RSSI it already keeps, for "heard loudest by".
+
+What it needs:
+
+* A new entity kind in spi, `IPresenceSensor`: present, last seen, per-source RSSI, nearest source.
+* An area for each source (`conf.Area("Garage Proxy Bluetooth", "Garage")`), so "nearest" is a room.
+* A `Rule` predicate for resolvable private addresses, so sources forward the candidates, and the plugin adding a rule for an address
+  that resolved, so it is heard every few seconds and not once a minute. A candidate that doesn't resolve is forgotten, not kept.
+* A builder, e.g. `bluetooth.Tracker("Andre's phone").IBeacon(match).Near(-70).AwayAfter(5*time.Minute)`.
+
+Phases: stable identities first (a companion-app iBeacon, a wearable or tag; needs no IRK), then the IRK path, then locating by
+smoothing RSSI across sources. RSSI is noisy (±10 dB), so a room needs a proxy in it; home or away is much easier. Android phones
+advertise little unless an app does.
 
 ## Where things live
 
