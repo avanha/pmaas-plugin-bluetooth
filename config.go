@@ -5,9 +5,7 @@ import (
 	"time"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
-	"github.com/avanha/pmaas-plugin-bluetooth/parser"
 	"github.com/avanha/pmaas-spi/bluetooth"
-	spidevice "github.com/avanha/pmaas-spi/device"
 )
 
 // PluginConfig configures the plugin. Where advertisements are heard is not its business: add a source plugin for each place
@@ -19,7 +17,7 @@ type PluginConfig struct {
 	// ListAllDevices is whether to keep a list of every named device the sources hear, wanted or not, and show it on the
 	// page: it is how to find the address of one to configure. The default is true. A device that is not wanted costs a
 	// sighting a minute while it is heard, and is forgotten when many more have been heard, or sooner if its address changes
-	// (a phone's does about every quarter of an hour). Turn it off and only what the parsers recognise and what is configured
+	// (a phone's does about every quarter of an hour). Turn it off and only what the models recognise and what is configured
 	// is listed.
 	ListAllDevices bool
 
@@ -37,7 +35,8 @@ type PluginConfig struct {
 	ActiveScanFor   time.Duration
 
 	devices map[string]*device
-	buttons []*BeaconButton
+	models  []bluetooth.DeviceModel
+	added   []bluetooth.ConfiguredDevice
 }
 
 func NewPluginConfig() PluginConfig {
@@ -50,72 +49,90 @@ func NewPluginConfig() PluginConfig {
 	}
 }
 
-// AddBeaconButton adds a button that is a Bluetooth beacon (see BeaconButton), by the beacon's address, which is any case with
-// ":" or "-". Say which frame is which press on what it returns; at least one is needed. It panics if the address is not a
-// Bluetooth address or is already named, like regexp.MustCompile does for a pattern that can't be: it is written in the program.
-func (c *PluginConfig) AddBeaconButton(address string, name string) *BeaconButton {
+// Recognize adds models of devices to recognise without their being configured: the sources are asked for what the models want,
+// and a device that one of them identifies becomes an entity. The devices module (pmaas-bluetooth-devices) has them, and
+// devices.All() is all of them. A model whose name has been added already is ignored, so overlapping lists are harmless.
+func (c *PluginConfig) Recognize(models ...bluetooth.DeviceModel) {
+	for _, model := range models {
+		if model == nil {
+			panic("bluetooth: Recognize was given a nil model")
+		}
+
+		known := false
+
+		for _, existing := range c.models {
+			known = known || existing.Name() == model.Name()
+		}
+
+		if !known {
+			c.models = append(c.models, model)
+		}
+	}
+}
+
+// Add adds a device the assembly configures, which a device package's builder makes (inkbird.Thermometer, bluecharm.Button), or
+// IBeaconButton. It panics if the device is badly configured, or its address is already named, like regexp.MustCompile does for a
+// pattern that can't be: it is written in the program.
+func (c *PluginConfig) Add(device bluetooth.ConfiguredDevice) {
+	if device == nil {
+		panic("bluetooth: Add was given a nil device")
+	}
+
+	if err := validateConfigured(device); err != nil {
+		panic(fmt.Sprintf("bluetooth: %v", err))
+	}
+
+	if addressed, ok := device.(bluetooth.Addressed); ok {
+		address := addressed.Address()
+
+		if existing, ok := c.devices[address]; ok {
+			panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", address, existing.LocalName))
+		}
+
+		for _, other := range c.added {
+			if o, ok := other.(bluetooth.Addressed); ok && o.Address() == address {
+				panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", address, other.Name()))
+			}
+		}
+	}
+
+	c.added = append(c.added, device)
+}
+
+// validateConfigured is what is wrong with how a device was configured, if anything.
+func validateConfigured(device bluetooth.ConfiguredDevice) error {
+	if validator, ok := device.(bluetooth.Validator); ok {
+		if err := validator.Validate(); err != nil {
+			return err
+		}
+	}
+
+	if _, ok := device.(bluetooth.Addressed); !ok && device.Kind() == bluetooth.KindButton {
+		return fmt.Errorf("the button %q has no fixed address: a button has to have one", device.Name())
+	}
+
+	return nil
+}
+
+// AddThermometer names a thermometer by its address, so that it is a thermometer from the first advertisement and the
+// bluetooth plugin asks the sources for it. What it is, is for the models to recognise (see Recognize); to say what it is, use
+// a device package's builder with Add. The address is any case, with ":" or "-"; it panics if it is not an address or has been
+// added already, like regexp.MustCompile does for a pattern that can't be: it is written in the program.
+func (c *PluginConfig) AddThermometer(address string, name string) {
 	normal, ok := bluetooth.NormalizeAddress(address)
 	if !ok {
-		panic(fmt.Sprintf("Button address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
+		panic(fmt.Sprintf("Device address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
 	}
 
 	if existing, ok := c.devices[normal]; ok {
 		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", normal, existing.LocalName))
 	}
 
-	for _, existing := range c.buttons {
-		if existing.address == normal {
-			panic(fmt.Sprintf("Device with address %s already registered as the button \"%s\"", normal, existing.name))
+	for _, other := range c.added {
+		if o, ok := other.(bluetooth.Addressed); ok && o.Address() == normal {
+			panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", normal, other.Name()))
 		}
 	}
 
-	button := &BeaconButton{address: normal, name: name, burst: defaultBurst, frames: make(map[spidevice.ButtonPress]bluetooth.IBeaconMatch)}
-	c.buttons = append(c.buttons, button)
-
-	return button
-}
-
-// AddThermometer names a thermometer by its address, so that it is a thermometer from the first advertisement and the
-// bluetooth plugin asks the sources for it. The address is any case, with ":" or "-"; it panics if it is not an address or
-// has been added already, like regexp.MustCompile does for a pattern that can't be: it is written in the program.
-func (c *PluginConfig) AddThermometer(address string, name string) {
-	c.addThermometer(address, name, nil)
-}
-
-// AddInkbirdThermometer is AddThermometer for an Inkbird IBS-TH, whose address you say is one. It is told what it is, instead of
-// working it out: an Inkbird is known by the name "sps", which it only gives in a scan response, and the sources scan passively
-// unless ActiveScan is set, so without this its readings would never be decoded. (The service UUID it lists is also used by
-// other gadgets, so it is not a safe thing to recognise it by.)
-func (c *PluginConfig) AddInkbirdThermometer(address string, name string) {
-	c.addThermometer(address, name, parser.Inkbird)
-}
-
-func (c *PluginConfig) addThermometer(address string, name string, known *parser.Parser) {
-	normal, ok := bluetooth.NormalizeAddress(address)
-	if !ok {
-		panic(fmt.Sprintf("Device address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
-	}
-
-	existing, ok := c.devices[normal]
-	if ok {
-		panic(fmt.Sprintf("Device with address %s already registered as \"%s\"", normal, existing.LocalName))
-	}
-
-	for _, button := range c.buttons {
-		if button.address == normal {
-			panic(fmt.Sprintf("Device with address %s already registered as the button \"%s\"", normal, button.name))
-		}
-	}
-
-	configured := &device{
-		Address:    normal,
-		LocalName:  name,
-		DeviceType: common.Thermometer,
-	}
-
-	if known != nil {
-		configured.parser, configured.DeviceType, configured.DeviceMakeAndModel = known, known.Type, known.MakeAndModel
-	}
-
-	c.devices[normal] = configured
+	c.devices[normal] = &device{Address: normal, LocalName: name, DeviceType: common.Thermometer}
 }

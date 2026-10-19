@@ -1,6 +1,11 @@
 # Bluetooth device models
 
-Status: design agreed, 2026-10-19. Nothing here is built.
+Status: built, 2026-10-19 (not yet released). Phases 1-4 are done; the guide (phase 5) is in `pmaas-bluetooth-devices`. Where the
+built thing differs from the text below: `DeviceModel` and `ConfiguredDevice` have a `Kind()` (thermometer or button), `Result` has
+`Millivolts`, `Addressed`, `MakeAndModeler`, `Validator` and `ButtonBinder` are optional interfaces, builders are `bluecharm.Button`,
+`inkbird.Thermometer`, `govee.Thermometer` and `bluetooth.IBeaconButton`, the press logic is `IBeaconPresses` in spi (so the
+BlueCharm package reuses it), and `AddThermometer` stays, to name a device that models recognise. Only a button with a fixed
+address is supported.
 
 ## Goal
 

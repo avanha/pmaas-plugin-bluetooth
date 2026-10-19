@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avanha/pmaas-bluetooth-devices/bluecharm"
 	"github.com/avanha/pmaas-spi/bluetooth"
 	"github.com/avanha/pmaas-spi/clock"
 	spidevice "github.com/avanha/pmaas-spi/device"
@@ -37,13 +38,16 @@ func ibeaconFrame(uuid string, major uint16, minor uint16) string {
 	return fmt.Sprintf("0201061aff4c000215%s%04x%04xc9", compact, major, minor)
 }
 
-func buttonConfig() (PluginConfig, *BeaconButton) {
+// buttonConfig is a BlueCharm beacon, which gives its battery as well as its presses.
+func buttonConfig() (PluginConfig, *bluecharm.BeaconButton) {
 	config := NewPluginConfig()
-	button := config.AddBeaconButton("dd-88-00-00-3d-36", "Kitchen").
+	button := bluecharm.Button("dd-88-00-00-3d-36", "Kitchen").
 		Single(bluetooth.MatchIBeacon(singleUUID)).
 		Double(bluetooth.MatchIBeacon(doubleUUID)).
 		Triple(bluetooth.MatchIBeacon(tripleUUID)).
 		Long(bluetooth.MatchIBeacon(longUUID))
+
+	config.Add(button)
 
 	return config, button
 }
@@ -80,8 +84,8 @@ func TestAddBeaconButton_IsConfiguredByAddressAndPress(t *testing.T) {
 		t.Errorf("%s %s %q", button.Address(), button.Name(), button.EntityId())
 	}
 
-	if len(button.frames) != 4 || button.burst != 3*time.Second || len(config.buttons) != 1 {
-		t.Errorf("frames %v, burst %v", button.frames, button.burst)
+	if len(config.added) != 1 {
+		t.Errorf("%d devices added", len(config.added))
 	}
 
 	if got := button.GetButtonData(); got.Name != "Kitchen" || got.Presses != 0 {
@@ -89,39 +93,32 @@ func TestAddBeaconButton_IsConfiguredByAddressAndPress(t *testing.T) {
 	}
 }
 
-func TestAddBeaconButton_MistakesPanic(t *testing.T) {
+func TestAdd_AButtonThatIsBadlyConfiguredPanics(t *testing.T) {
 	for name, mistake := range map[string]func(){
-		"not an address": func() { c := NewPluginConfig(); c.AddBeaconButton("nonsense", "x") },
+		"not an address": func() { IBeaconButton("nonsense", "x") },
 		"the address twice": func() {
 			c := NewPluginConfig()
-			c.AddBeaconButton(buttonAddress, "x")
-			c.AddBeaconButton("dd:88:00:00:3d:36", "y")
+			c.Add(IBeaconButton(buttonAddress, "x").Single(bluetooth.MatchIBeacon(singleUUID)))
+			c.Add(IBeaconButton("dd:88:00:00:3d:36", "y").Single(bluetooth.MatchIBeacon(singleUUID)))
 		},
 		"a thermometer's address": func() {
 			c := NewPluginConfig()
 			c.AddThermometer(buttonAddress, "x")
-			c.AddBeaconButton(buttonAddress, "y")
+			c.Add(IBeaconButton(buttonAddress, "y").Single(bluetooth.MatchIBeacon(singleUUID)))
 		},
 		"a button's, as a thermometer": func() {
 			c := NewPluginConfig()
-			c.AddBeaconButton(buttonAddress, "y")
+			c.Add(IBeaconButton(buttonAddress, "y").Single(bluetooth.MatchIBeacon(singleUUID)))
 			c.AddThermometer(buttonAddress, "x")
 		},
 		"the same frame for two presses": func() {
-			c := NewPluginConfig()
-			c.AddBeaconButton(buttonAddress, "x").Single(bluetooth.MatchIBeacon(singleUUID)).Double(bluetooth.MatchIBeacon(singleUUID))
+			IBeaconButton(buttonAddress, "x").Single(bluetooth.MatchIBeacon(singleUUID)).Double(bluetooth.MatchIBeacon(singleUUID))
 		},
-		"a frame that says nothing": func() {
-			c := NewPluginConfig()
-			c.AddBeaconButton(buttonAddress, "x").Single(bluetooth.IBeaconMatch{})
-		},
-		"no burst":         func() { c := NewPluginConfig(); c.AddBeaconButton(buttonAddress, "x").Burst(0) },
-		"a negative burst": func() { c := NewPluginConfig(); c.AddBeaconButton(buttonAddress, "x").Burst(-time.Second) },
-		"no presses at all": func() {
-			c := NewPluginConfig()
-			c.AddBeaconButton(buttonAddress, "x")
-			NewPlugin(c)
-		},
+		"a frame that says nothing": func() { IBeaconButton(buttonAddress, "x").Single(bluetooth.IBeaconMatch{}) },
+		"no burst":                  func() { IBeaconButton(buttonAddress, "x").Burst(0) },
+		"a negative burst":          func() { IBeaconButton(buttonAddress, "x").Burst(-time.Second) },
+		"no presses at all":         func() { c := NewPluginConfig(); c.Add(IBeaconButton(buttonAddress, "x")) },
+		"nothing":                   func() { c := NewPluginConfig(); c.Add(nil) },
 	} {
 		func() {
 			defer func() {
@@ -137,10 +134,10 @@ func TestAddBeaconButton_MistakesPanic(t *testing.T) {
 
 func TestAddBeaconButton_ThePressesOfOneUUIDAreToldApartByMajorAndMinor(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddBeaconButton(buttonAddress, "Kitchen").
+	config.Add(IBeaconButton(buttonAddress, "Kitchen").
 		Single(bluetooth.MatchIBeacon(singleUUID).WithMinor(1)).
 		Double(bluetooth.MatchIBeacon(singleUUID).WithMinor(2)).
-		Long(bluetooth.MatchIBeacon(singleUUID))
+		Long(bluetooth.MatchIBeacon(singleUUID)))
 
 	f := newFixture(t, config)
 
@@ -285,7 +282,7 @@ func TestButton_EachKindOfPressIsItsOwn(t *testing.T) {
 
 func TestButton_TheBurstCanBeSetToMatchTheBeacon(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddBeaconButton(buttonAddress, "Kitchen").Single(bluetooth.MatchIBeacon(singleUUID)).Burst(10 * time.Second)
+	config.Add(IBeaconButton(buttonAddress, "Kitchen").Single(bluetooth.MatchIBeacon(singleUUID)).Burst(10 * time.Second))
 
 	f := newFixture(t, config)
 
@@ -389,11 +386,11 @@ func TestButton_ARunningPluginKeepsItsButtonsAcrossTheMinute(t *testing.T) {
 func TestAddBeaconButton_TheSlotsCanBeToldApartByMajorAlone(t *testing.T) {
 	// As the beacon is configured: each press in the slot of that number, with a major to match, and the UUID not mattering.
 	config := NewPluginConfig()
-	config.AddBeaconButton(buttonAddress, "Couch").
+	config.Add(IBeaconButton(buttonAddress, "Couch").
 		Single(bluetooth.MatchAnyIBeacon().WithMajor(0)).
 		Double(bluetooth.MatchAnyIBeacon().WithMajor(1)).
 		Triple(bluetooth.MatchAnyIBeacon().WithMajor(2)).
-		Long(bluetooth.MatchAnyIBeacon().WithMajor(3))
+		Long(bluetooth.MatchAnyIBeacon().WithMajor(3)))
 
 	f := newFixture(t, config)
 
@@ -410,24 +407,13 @@ func TestAddBeaconButton_TheSlotsCanBeToldApartByMajorAlone(t *testing.T) {
 	}
 }
 
-func TestAddBeaconButton_AMatchThatSaysNothingPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("no panic")
-		}
-	}()
-
-	c := NewPluginConfig()
-	c.AddBeaconButton(buttonAddress, "x").Single(bluetooth.MatchAnyIBeacon())
-}
-
 func TestAddBeaconButton_TheMoreSpecificFrameWinsWhateverTheOrderOfPresses(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddBeaconButton(buttonAddress, "Kitchen").
-		Single(bluetooth.MatchIBeacon(singleUUID)).                        // any minor, any major
-		Double(bluetooth.MatchIBeacon(singleUUID).WithMinor(2)).           // one minor
-		Triple(bluetooth.MatchIBeacon(singleUUID).WithMajor(7)).           // one major
-		Long(bluetooth.MatchIBeacon(singleUUID).WithMajor(7).WithMinor(3)) // both
+	config.Add(IBeaconButton(buttonAddress, "Kitchen").
+		Single(bluetooth.MatchIBeacon(singleUUID)).                         // any minor, any major
+		Double(bluetooth.MatchIBeacon(singleUUID).WithMinor(2)).            // one minor
+		Triple(bluetooth.MatchIBeacon(singleUUID).WithMajor(7)).            // one major
+		Long(bluetooth.MatchIBeacon(singleUUID).WithMajor(7).WithMinor(3))) // both
 
 	f := newFixture(t, config)
 
@@ -453,41 +439,9 @@ func TestAddBeaconButton_TheMoreSpecificFrameWinsWhateverTheOrderOfPresses(t *te
 	}
 }
 
-func TestBeaconButton_WhichWhenTwoFramesAreEquallySpecificTheFirstKindOfPressWins(t *testing.T) {
-	b := &BeaconButton{name: "x", frames: map[spidevice.ButtonPress]bluetooth.IBeaconMatch{
-		spidevice.PressSingle: bluetooth.MatchIBeacon(singleUUID).WithMinor(1),
-		spidevice.PressLong:   bluetooth.MatchIBeacon(singleUUID).WithMajor(1),
-	}}
-
-	for range 20 {
-		if press, ok := b.which(bluetooth.IBeacon{UUID: singleUUID, Major: 1, Minor: 1}); !ok || press != spidevice.PressSingle {
-			t.Fatalf("%v %v", press, ok)
-		}
-	}
-}
-
 // tlmFrame is the advertising data of an Eddystone-TLM frame with the battery at the given voltage.
 func tlmFrame(millivolts uint16) string {
 	return fmt.Sprintf("0201060303aafe1116aafe2000%04x1880000001000000ffff", millivolts)
-}
-
-func TestBatteryLevel_FallsAwayAsTheVoltageDoes(t *testing.T) {
-	last := 101
-
-	for _, mv := range []int{3300, 3000, 2950, 2900, 2850, 2800, 2700, 2650, 2600, 2500, 2400, 2200, 2000, 1500} {
-		got := batteryLevel(mv)
-		if got < 0 || got > 100 || got > last {
-			t.Errorf("%d mV is %d%% after %d%%", mv, got, last)
-		}
-
-		last = got
-	}
-
-	for mv, want := range map[int]int{3300: 100, 3000: 100, 2900: 80, 2800: 55, 2400: 5, 2000: 0, 1000: 0, 2950: 90} {
-		if got := batteryLevel(mv); got != want {
-			t.Errorf("%d mV is %d%%, want %d%%", mv, got, want)
-		}
-	}
 }
 
 func TestBeacon_IsOnThePageWithWhatWasHeardAndItsBattery(t *testing.T) {

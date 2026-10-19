@@ -1,7 +1,10 @@
 # A PMAAS Plugin for Bluetooth BLE Beacons
 
-Takes Bluetooth LE advertisements from any number of *sources*, works out what the devices are (today a Govee GVH5075 and
-an Inkbird IBS-TH), and publishes them as entities. It does not listen to a radio itself:
+Takes Bluetooth LE advertisements from any number of *sources*, works out what the devices are, and publishes them as entities.
+What a device *is* (recognising it, decoding what it advertises) is not here: it is in *device models*, which come from
+[`pmaas-bluetooth-devices`](../pmaas-bluetooth-devices) or any module that writes one (see `DEVICE_MODELS.md`). This plugin
+does everything that is the same for every device: merging sources, aging, what to ask the sources for, the entities and the
+page. It does not listen to a radio itself:
 
 * [`pmaas-plugin-bluez`](../pmaas-plugin-bluez) hears with the local radio, through BlueZ over D-Bus (Linux).
 * An ESPHome Bluetooth proxy is a source too (planned: see `DESIGN.md`).
@@ -9,7 +12,9 @@ an Inkbird IBS-TH), and publishes them as entities. It does not listen to a radi
 ```go
 coreConfig.AddPlugin(bluez.NewPlugin(bluez.NewPluginConfig()), config.PluginConfig{}) // a source
 conf := bluetooth.NewPluginConfig()
-conf.AddThermometer("A4:C1:38:CC:E2:F0", "Garage") // optional: name a device you know
+conf.Recognize(devices.All()...)                     // every device the module knows, with no configuration
+conf.AddThermometer("A4:C1:38:CC:E2:F0", "Garage")   // optional: name a device you know
+conf.Add(inkbird.Thermometer("49:22:01:23:0A:1B", "Patio")) // or say what one is
 coreConfig.AddPlugin(bluetooth.NewPlugin(conf), config.PluginConfig{})
 ```
 
@@ -22,23 +27,23 @@ about to change anyway (a private random address: phones, watches, trackers, whi
 so) is marked "changes address" on the page, is let go after ten minutes without being heard, and goes first when room is
 needed, so the list isn't a litter of dead phones. Set `ListAllDevices = false` to turn the list off.
 
-It tells the sources what it wants, with an `InterestEvent` (what the parsers recognise, and every device named in the
+It tells the sources what it wants, with an `InterestEvent` (what the models recognise, and every device named in the
 configuration), so that the many advertisements nobody wants are dropped where they are heard. Nothing is forwarded until it
 has said so, so a source added without this plugin does nothing.
 
-The design, and what is still to come, is in `DESIGN.md`. The decoding is in `parser/`: plain functions over decoded
-advertisement fields, tested with captured advertisements.
+The design, and what is still to come, is in `DESIGN.md`; how models plug in is in `DEVICE_MODELS.md`.
 
 `PluginConfig.Adapter` has moved to the BlueZ plugin.
 
 ## Beacon buttons
 
-A beacon such as the BlueCharm BC011 Pro with its triggers set is a button: `config.AddBeaconButton(address, name)` and say
+A beacon such as the BlueCharm BC011 Pro with its triggers set is a button: `conf.Add(bluecharm.Button(address, name)...)` (from
+`pmaas-bluetooth-devices`; `bluetooth.IBeaconButton` is the same for any beacon, without the battery) and say
 which iBeacon frame is which press (`.Single(...)`, `.Double(...)`, `.Triple(...)`, `.Long(...)`). Each press is announced as a
 `device.ButtonPressedEvent`, and the button is an entity (`device.IButton`) that an automation can wait for.
 
 The devices page lists each beacon button with its address, how loudly and when it was last heard, and what was last done with
-it. It also shows the battery, **if the beacon says it**: the iBeacon frames carry no battery, so give one of the beacon's slots to a
+it. It also shows the battery, **if the beacon says it** (the BlueCharm package reads it): the iBeacon frames carry no battery, so give one of the beacon's slots to a
 frame that advertises all the time (in the KBeaconPro app, a slot of type "System" or "Eddystone TLM"; the beacon then also stays
 connectable). Either works, and the plugin reads both:
 
@@ -61,7 +66,7 @@ An ESPHome proxy is switched to the mode the plugin asks for when it connects, w
 
 **Inkbird IBS-TH.** It gives its name (`sps`) *and its reading* only in a scan response, which a passive scan never asks for: the
 frames a passive scan hears of it are just flags and a service UUID. So an Inkbird has to be configured by address and told what it
-is, `config.AddInkbirdThermometer("49:22:01:23:0A:1B", "Patio")` (the service UUID it lists, `fff0`, is used by other gadgets, so
+is, `config.Add(inkbird.Thermometer("49:22:01:23:0A:1B", "Patio"))` (the service UUID it lists, `fff0`, is used by other gadgets, so
 it is not safe to recognise it by), and the plugin scans actively for a while every so often when one is configured: the first
 window as it starts, then every `ActiveScanEvery` (default 3 minutes) for `ActiveScanFor` (default 30 seconds). The rest of the time
 the scan is passive. Set `ActiveScan` to scan actively all the time instead, which is also what to turn on while finding out what an

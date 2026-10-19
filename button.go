@@ -12,159 +12,112 @@ import (
 	"github.com/avanha/pmaas-spi/events"
 )
 
-// defaultBurst is how long a beacon is assumed to go on advertising after a press: the BlueCharm's "Trigger Adv Duration"
-// that most people set is a few seconds.
-const defaultBurst = 3 * time.Second
-
-// burstMargin is how much longer than the burst a quiet spell has to be for the next frame to be a new press and not the
-// rest of the last.
-const burstMargin = 500 * time.Millisecond
-
-// presses are all the ways a button can be pressed, in the order they are looked for.
-var presses = []spidevice.ButtonPress{spidevice.PressSingle, spidevice.PressDouble, spidevice.PressTriple, spidevice.PressLong}
-
-// BeaconButton is a button that is a Bluetooth beacon, such as a BlueCharm BC011 Pro with its triggers set: it advertises a
-// frame for a few seconds after it is pressed, a different one for each way of pressing it. Add one to the configuration with
-// AddBeaconButton, say which frame is which press, and the plugin announces each press (see spidevice.ButtonPressedEvent).
+// BeaconButton is a button that is a Bluetooth beacon advertising an iBeacon frame for a few seconds after it is pressed, a
+// different one for each way of pressing it. IBeaconButton makes one, you say which frame is which press, and Add it to the
+// configuration; the plugin announces each press (see spidevice.ButtonPressedEvent). A device package may know more about its
+// beacon, such as its battery (bluecharm.Button).
 //
 // Once the plugin has started it is a spidevice.IButton, so it goes wherever one does. Before then, and after the plugin stops,
 // it answers as a button that has not been pressed.
 type BeaconButton struct {
+	*bluetooth.ButtonHandle
 	address string
 	name    string
-	burst   time.Duration
-	frames  map[spidevice.ButtonPress]bluetooth.IBeaconMatch
-
-	stub     spicommon.StubHolder[spidevice.IButton]
-	entityId atomic.Pointer[string]
+	presses *bluetooth.IBeaconPresses
 }
 
+var _ bluetooth.ConfiguredDevice = (*BeaconButton)(nil)
+var _ bluetooth.Addressed = (*BeaconButton)(nil)
+var _ bluetooth.MakeAndModeler = (*BeaconButton)(nil)
+var _ bluetooth.Validator = (*BeaconButton)(nil)
+var _ bluetooth.ButtonBinder = (*BeaconButton)(nil)
 var _ spidevice.IButton = (*BeaconButton)(nil)
 
-// Name is the button's name.
-func (b *BeaconButton) Name() string {
-	return b.name
-}
-
-// Address is the beacon's address.
-func (b *BeaconButton) Address() string {
-	return b.address
-}
-
-// EntityId is the ID the button is registered under once the plugin has started, which is what the events about it say it is
-// from, or empty before then.
-func (b *BeaconButton) EntityId() string {
-	if id := b.entityId.Load(); id != nil {
-		return *id
+// IBeaconButton is a beacon button by the beacon's address, which is any case with ":" or "-". Say which frame is which press on
+// what it returns; at least one is needed. It panics if the address is not a Bluetooth address, like regexp.MustCompile does for a
+// pattern that can't be: it is written in the program.
+func IBeaconButton(address string, name string) *BeaconButton {
+	normal, ok := bluetooth.NormalizeAddress(address)
+	if !ok {
+		panic(fmt.Sprintf("Button address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
 	}
 
-	return ""
-}
-
-func (b *BeaconButton) GetButtonData() spidevice.Button {
-	stub, err := b.stub.Stub()
-	if err != nil {
-		return spidevice.Button{Name: b.name}
+	return &BeaconButton{
+		ButtonHandle: bluetooth.NewButtonHandle(name), address: normal, name: name, presses: bluetooth.NewIBeaconPresses(name),
 	}
-
-	return stub.GetButtonData()
 }
 
 // Single is the frame the beacon advertises after a single click. Each press needs a frame of its own. It panics if another
 // press has the same frame, like regexp.MustCompile does for a pattern that can't be.
 func (b *BeaconButton) Single(frame bluetooth.IBeaconMatch) *BeaconButton {
-	return b.press(spidevice.PressSingle, frame)
+	b.presses.Single(frame)
+	return b
 }
 
 // Double is the frame the beacon advertises after a double click.
 func (b *BeaconButton) Double(frame bluetooth.IBeaconMatch) *BeaconButton {
-	return b.press(spidevice.PressDouble, frame)
+	b.presses.Double(frame)
+	return b
 }
 
 // Triple is the frame the beacon advertises after a triple click.
 func (b *BeaconButton) Triple(frame bluetooth.IBeaconMatch) *BeaconButton {
-	return b.press(spidevice.PressTriple, frame)
+	b.presses.Triple(frame)
+	return b
 }
 
 // Long is the frame the beacon advertises after a long press.
 func (b *BeaconButton) Long(frame bluetooth.IBeaconMatch) *BeaconButton {
-	return b.press(spidevice.PressLong, frame)
-}
-
-// Burst is how long the beacon goes on advertising after a press (the BlueCharm's "Trigger Adv Duration"). The default is three
-// seconds. Frames of the same press that come sooner than that, and a little longer, are the rest of the press that was
-// already announced, not another press, so two presses of the same kind closer together than this are one. It panics if it is not
-// positive.
-func (b *BeaconButton) Burst(burst time.Duration) *BeaconButton {
-	if burst <= 0 {
-		panic(fmt.Sprintf("bluetooth: button %q: the burst has to be longer than nothing, not %v", b.name, burst))
-	}
-
-	b.burst = burst
-
+	b.presses.Long(frame)
 	return b
 }
 
-func (b *BeaconButton) press(press spidevice.ButtonPress, frame bluetooth.IBeaconMatch) *BeaconButton {
-	if frame.IsEmpty() {
-		panic(fmt.Sprintf("bluetooth: button %q: the %s press needs a frame that says something: use bluetooth.MatchIBeacon or MatchAnyIBeacon with WithMajor", b.name, press))
-	}
+// Burst is how long the beacon goes on advertising after a press. The default is three seconds. See
+// bluetooth.IBeaconPresses.Burst.
+func (b *BeaconButton) Burst(burst time.Duration) *BeaconButton { b.presses.Burst(burst); return b }
 
-	for other, existing := range b.frames {
-		if other != press && sameFrame(existing, frame) {
-			panic(fmt.Sprintf("bluetooth: button %q: the %s and %s presses can't both be %s", b.name, other, press, frame))
-		}
-	}
-
-	b.frames[press] = frame
-
-	return b
+func (b *BeaconButton) Name() string            { return b.name }
+func (b *BeaconButton) Kind() bluetooth.Kind    { return bluetooth.KindButton }
+func (b *BeaconButton) Address() string         { return b.address }
+func (b *BeaconButton) MakeAndModel() string    { return "iBeacon button" }
+func (b *BeaconButton) NeedsScanResponse() bool { return false }
+func (b *BeaconButton) Validate() error         { return b.presses.Validate() }
+func (b *BeaconButton) New() bluetooth.Device {
+	return &beaconButtonDevice{hearer: b.presses.NewHearer()}
 }
 
-// sameFrame is whether two matches say the same thing.
-func sameFrame(a bluetooth.IBeaconMatch, b bluetooth.IBeaconMatch) bool {
-	return a.String() == b.String()
+func (b *BeaconButton) Claims(a *bluetooth.AdvertisementEvent) bool { return a.Address == b.address }
+
+// Rules want every frame as it is heard: the first of a burst is the press, and nothing may wait.
+func (b *BeaconButton) Rules() []bluetooth.Rule {
+	return []bluetooth.Rule{{Name: "button " + b.name, Address: b.address, Latency: bluetooth.Immediate}}
 }
 
-// which is the press a frame says, if it says one. A press whose match is more specific is looked for first, so that a UUID
-// shared by two presses that differ in the minor is told apart.
-func (b *BeaconButton) which(frame bluetooth.IBeacon) (spidevice.ButtonPress, bool) {
-	var found spidevice.ButtonPress
-	specificity := -1
+type beaconButtonDevice struct {
+	hearer *bluetooth.PressHearer
+}
 
-	for _, press := range presses {
-		match, ok := b.frames[press]
-		if !ok || !match.Matches(frame) {
-			continue
-		}
-
-		if score := match.Specificity(); score > specificity {
-			found, specificity = press, score
-		}
-	}
-
-	return found, specificity >= 0
+func (d *beaconButtonDevice) Hear(a *bluetooth.AdvertisementEvent, now time.Time) bluetooth.Result {
+	return bluetooth.Result{Presses: d.hearer.Hear(a, now)}
 }
 
 // button is a beacon button that the plugin has started to watch. Owned by the plugin goroutine.
 type button struct {
-	config *BeaconButton
+	config bluetooth.ConfiguredDevice
+	name   string
 	id     string
 	data   spidevice.Button
 
-	// lastFrame is when a frame of each kind of press was last heard, which is what tells a new press from the rest of the burst
-	// of one that was already announced.
-	lastFrame map[spidevice.ButtonPress]time.Time
+	// impl is the device's own state, and disabled is that it panicked, so is not heard any more.
+	impl     bluetooth.Device
+	disabled bool
 
-	// lastHeard is when anything was last heard from the beacon, and rssi how loudly. battery is what its Eddystone-TLM frame said,
-	// if it has sent one, and millivolts the voltage it gave.
+	// lastHeard is when anything was last heard from the beacon, and rssi how loudly. battery is what the device said of its battery,
+	// if it has, and millivolts the voltage it gave.
 	lastHeard  time.Time
 	rssi       int
 	battery    environmental.BatteryData
 	millivolts int
-
-	// ownLevel is that the battery level is the beacon's own (a System frame), so a voltage doesn't replace it.
-	ownLevel bool
 
 	stub *buttonStub
 }
@@ -188,33 +141,37 @@ func (s *buttonStub) GetButtonData() spidevice.Button {
 		func(target spidevice.IButton) spidevice.Button { return target.GetButtonData() })
 }
 
-// startButtons registers an entity for each beacon button. Runs on the plugin goroutine.
+// startButtons registers an entity for each button. Runs on the plugin goroutine.
 func (p *plugin) startButtons() {
-	for _, configured := range p.beaconButtons {
+	for _, configured := range p.buttonDevices {
+		address := configured.(bluetooth.Addressed).Address()
+
 		b := &button{
-			config:    configured,
-			data:      spidevice.Button{Name: configured.name},
-			lastFrame: make(map[spidevice.ButtonPress]time.Time),
-			stub:      &buttonStub{},
+			config: configured,
+			name:   configured.Name(),
+			data:   spidevice.Button{Name: configured.Name()},
+			impl:   configured.New(),
+			stub:   &buttonStub{},
 		}
 
 		b.stub.wrapper.Store(&spicommon.ThreadSafeEntityWrapper[spidevice.IButton]{Container: p.container, Entity: b})
 
-		id, err := p.container.RegisterEntity(configured.address, spidevice.IButtonType, configured.name,
+		id, err := p.container.RegisterEntity(address, spidevice.IButtonType, b.name,
 			func() (any, error) { return b.stub, nil })
 		if err != nil {
-			p.log.Error("button could not be registered", "name", configured.name, "address", configured.address, "error", err)
+			p.log.Error("button could not be registered", "name", b.name, "address", address, "error", err)
 
 			continue
 		}
 
 		b.id = id
-		configured.entityId.Store(&id)
-		p.buttons[configured.address] = b
+		p.buttons[address] = b
 
-		event := spicommon.StubAvailableEvent[spidevice.IButton]{EntityEvent: b.entityEvent(), EntityStub: b.stub}
-		if err := configured.stub.Provide(p.container, event); err != nil {
-			p.log.Error("unable to provide the button stub", "error", err)
+		if binder, ok := configured.(bluetooth.ButtonBinder); ok {
+			event := spicommon.StubAvailableEvent[spidevice.IButton]{EntityEvent: b.entityEvent(), EntityStub: b.stub}
+			if err := binder.Bind(p.container, id, event); err != nil {
+				p.log.Error("unable to provide the button stub", "error", err)
+			}
 		}
 	}
 }
@@ -222,73 +179,78 @@ func (p *plugin) startButtons() {
 // stopButtons deregisters the buttons. Runs on the plugin goroutine.
 func (p *plugin) stopButtons() {
 	for address, b := range p.buttons {
-		b.config.stub.Withdraw()
+		if binder, ok := b.config.(bluetooth.ButtonBinder); ok {
+			binder.Unbind()
+		}
 
 		if err := p.container.DeregisterEntity(b.id); err != nil {
-			p.log.Error("button could not be deregistered", "name", b.config.name, "error", err)
+			p.log.Error("button could not be deregistered", "name", b.name, "error", err)
 		}
 
 		b.stub.wrapper.Store(nil)
-		b.config.entityId.Store(nil)
 		delete(p.buttons, address)
 	}
 }
 
 func (b *button) entityEvent() events.EntityEvent {
-	return events.EntityEvent{Id: b.id, EntityType: spidevice.IButtonType, Name: b.config.name}
+	return events.EntityEvent{Id: b.id, EntityType: spidevice.IButtonType, Name: b.name}
 }
 
-// hear takes in an advertisement from a beacon button's address, and announces a press if it is the first frame of one.
+// hearButton takes in an advertisement from a button's address, and announces the presses the device finds in it.
 func (p *plugin) hearButton(b *button, a bluetooth.AdvertisementEvent) {
 	now := p.now()
-	previous := b.lastHeard
 	b.lastHeard, b.rssi = now, a.RSSI
 
-	// The battery, from whichever frame the beacon is set to advertise. Its own figure (the KKM System frame) is better than one worked
-	// out here from a voltage (Eddystone-TLM), so once the beacon has given its own, the voltage only adds itself to the picture.
-	if system, ok := bluetooth.ParseKKMSystem(a.ServiceData); ok {
-		b.battery = environmental.BatteryData{Level: min(int(system.BatteryPercent), 100), LastUpdateTime: now}
-		b.ownLevel = true
-	} else if tlm, ok := bluetooth.ParseEddystoneTLM(a.ServiceData); ok && tlm.BatteryMillivolts > 0 {
-		b.millivolts = int(tlm.BatteryMillivolts)
+	result := p.hear(b.name, b.impl, &b.disabled, &a, now)
 
-		if !b.ownLevel {
-			b.battery = environmental.BatteryData{Level: batteryLevel(b.millivolts), LastUpdateTime: now}
+	if result.Battery != nil {
+		b.battery = environmental.BatteryData{Level: *result.Battery, LastUpdateTime: now}
+	}
+
+	if result.Millivolts != nil {
+		b.millivolts = *result.Millivolts
+	}
+
+	for _, press := range result.Presses {
+		b.data.Presses++
+		b.data.LastPress, b.data.LastPressTime = press, now
+
+		p.log.Debug("button pressed", "name", b.name, "press", press, "source", a.Source, "rssi", a.RSSI, "behind", now.Sub(a.Time))
+
+		p.broadcast(b.id, spidevice.ButtonPressedEvent{EntityEvent: b.entityEvent(), Press: press, Time: now, Count: b.data.Presses})
+		p.broadcast(b.id, events.EntityStateChangedEvent{EntityEvent: b.entityEvent(), NewState: b.data})
+	}
+}
+
+// slowHear is how long a device may take to hear an advertisement before it is warned about: it runs on the goroutine every
+// advertisement goes through.
+const slowHear = 20 * time.Millisecond
+
+// hear gives the advertisement to a device, which is someone else's code. A panic disables the device, with a log, instead of
+// taking the plugin's goroutine down, and a slow call is warned about. Runs on the plugin goroutine.
+func (p *plugin) hear(label string, impl bluetooth.Device, disabled *bool, a *bluetooth.AdvertisementEvent, now time.Time) (result bluetooth.Result) {
+	if impl == nil || *disabled {
+		return bluetooth.Result{}
+	}
+
+	started := time.Now()
+
+	defer func() {
+		if r := recover(); r != nil {
+			*disabled = true
+			result = bluetooth.Result{}
+
+			p.log.Error("a device panicked hearing an advertisement, so it is not heard any more", "device", label, "address", a.Address, "panic", r)
+
+			return
 		}
-	}
 
-	frame, ok := bluetooth.ParseIBeacon(a.ManufacturerData)
-	if !ok {
-		return
-	}
+		if took := time.Since(started); took > slowHear {
+			p.log.Warn("a device was slow to hear an advertisement", "device", label, "address", a.Address, "took", took)
+		}
+	}()
 
-	press, ok := b.config.which(frame)
-	if !ok {
-		return
-	}
-
-	attrs := []any{"name", b.config.name, "press", press, "source", a.Source, "rssi", a.RSSI, "behind", now.Sub(a.Time)}
-	if !previous.IsZero() {
-		attrs = append(attrs, "sincePreviousFrame", now.Sub(previous))
-	}
-
-	p.log.Debug("heard a frame of a press", attrs...)
-
-	last, heard := b.lastFrame[press]
-	b.lastFrame[press] = now
-
-	// The rest of a burst already announced: the beacon goes on advertising a press for a few seconds.
-	if heard && now.Sub(last) < b.config.burst+burstMargin {
-		return
-	}
-
-	b.data.Presses++
-	b.data.LastPress, b.data.LastPressTime = press, now
-
-	p.log.Debug("button pressed", "name", b.config.name, "press", press, "behind", now.Sub(a.Time))
-
-	p.broadcast(b.id, spidevice.ButtonPressedEvent{EntityEvent: b.entityEvent(), Press: press, Time: now, Count: b.data.Presses})
-	p.broadcast(b.id, events.EntityStateChangedEvent{EntityEvent: b.entityEvent(), NewState: b.data})
+	return impl.Hear(a, now)
 }
 
 func (p *plugin) broadcast(id string, event any) {

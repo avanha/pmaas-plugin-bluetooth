@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
-	"github.com/avanha/pmaas-plugin-bluetooth/parser"
 	"github.com/avanha/pmaas-spi/bluetooth"
 	environmental "github.com/avanha/pmaas-spi/environment"
 	"github.com/avanha/pmaas-spi/events"
@@ -100,19 +99,41 @@ func (p *plugin) ingest(a bluetooth.AdvertisementEvent) {
 		changed = true
 	}
 
-	if dev.parser == nil {
-		if chosen := parser.Choose(dev.known); chosen != nil {
-			p.log.Debug("device identified", "name", dev.Name, "address", dev.Address, "makeAndModel", chosen.MakeAndModel)
+	if !dev.claimChecked {
+		dev.claimChecked = true
 
-			dev.parser = chosen
-			p.applyDeviceType(dev, chosen.Type, chosen.MakeAndModel)
+		for _, claimer := range p.claimers {
+			if p.claims(claimer, &a) {
+				dev.LocalName = claimer.Name()
+				dev.Name = claimer.Name()
 
-			changed = true
+				p.log.Debug("device claimed", "name", dev.Name, "address", dev.Address)
+				p.adopt(dev, claimer)
+
+				changed = true
+
+				break
+			}
 		}
 	}
 
-	if dev.parser != nil && (len(a.ManufacturerData) > 0 || len(a.ServiceData) > 0) {
-		if result, ok := dev.parser.Parse(a.Fields); ok && p.applyResult(dev, result, now) {
+	if dev.impl == nil {
+		for _, model := range p.models {
+			if model.Identify(dev.known) {
+				p.log.Debug("device identified", "name", dev.Name, "address", dev.Address, "makeAndModel", model.Name())
+
+				dev.model, dev.impl = model, model.New()
+				p.applyKind(dev, model.Kind(), model.Name())
+
+				changed = true
+
+				break
+			}
+		}
+	}
+
+	if dev.impl != nil && (len(a.ManufacturerData) > 0 || len(a.ServiceData) > 0) {
+		if result := p.hear(dev.Name, dev.impl, &dev.disabled, &a, now); p.applyResult(dev, result, now) {
 			changed = true
 		}
 	}
@@ -155,24 +176,55 @@ func (p *plugin) hearSignal(dev *device, a bluetooth.AdvertisementEvent, now tim
 	return previous != best.rssi
 }
 
-// applyResult puts what a parser found on the device, and reports whether anything about it changed.
-func (p *plugin) applyResult(dev *device, result parser.Result, now time.Time) bool {
-	changed := false
-
-	if result.BatteryLevel != -1 {
-		changed = dev.BatteryData.Level != result.BatteryLevel
-		dev.BatteryData = environmental.BatteryData{Level: result.BatteryLevel, LastUpdateTime: now}
+// adopt makes the device one the assembly configured. The entity is registered by the caller, once the plugin has started
+// (see applyKind).
+func (p *plugin) adopt(dev *device, configured bluetooth.ConfiguredDevice) {
+	makeAndModel := configured.Name()
+	if m, ok := configured.(bluetooth.MakeAndModeler); ok {
+		makeAndModel = m.MakeAndModel()
 	}
 
-	if !result.Environment.IsEmpty() {
-		tempUpdated := dev.SensorData.Temperature != result.Environment.Temperature
-		humidityUpdated := dev.SensorData.Humidity != result.Environment.Humidity
+	dev.impl = configured.New()
+	dev.DeviceType = deviceTypeOf(configured.Kind())
+	dev.DeviceMakeAndModel = makeAndModel
+
+	if dev.PmaasEntityId == "" && p.container != nil {
+		p.registerDevice(dev)
+	}
+}
+
+// claims asks a configured device whether the advertisement is from it. It is someone else's code, so a panic is a no.
+func (p *plugin) claims(configured bluetooth.ConfiguredDevice, a *bluetooth.AdvertisementEvent) (claimed bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.log.Error("a device panicked deciding whether an advertisement is its own", "device", configured.Name(), "address", a.Address, "panic", r)
+
+			claimed = false
+		}
+	}()
+
+	return configured.Claims(a)
+}
+
+// applyResult puts what a device found on it, and reports whether anything about it changed.
+func (p *plugin) applyResult(dev *device, result bluetooth.Result, now time.Time) bool {
+	changed := false
+
+	if result.Battery != nil {
+		changed = dev.BatteryData.Level != *result.Battery
+		dev.BatteryData = environmental.BatteryData{Level: *result.Battery, LastUpdateTime: now}
+	}
+
+	if result.Reading != nil {
+		reading := *result.Reading
+		tempUpdated := dev.SensorData.Temperature != reading.Temperature
+		humidityUpdated := dev.SensorData.Humidity != reading.Humidity
 
 		dev.SensorData = environmental.SensorData{
 			HasData:        true,
-			Temperature:    result.Environment.Temperature,
-			HasHumidity:    result.Environment.Humidity >= 0,
-			Humidity:       result.Environment.Humidity,
+			Temperature:    reading.Temperature,
+			HasHumidity:    reading.HasHumidity,
+			Humidity:       reading.Humidity,
 			LastUpdateTime: now,
 		}
 
@@ -182,8 +234,18 @@ func (p *plugin) applyResult(dev *device, result parser.Result, now time.Time) b
 	return changed
 }
 
-func (p *plugin) applyDeviceType(dev *device, deviceType common.DeviceType, makeAndModel string) {
-	dev.DeviceType = deviceType
+// deviceTypeOf is the type of device that is of the kind.
+func deviceTypeOf(kind bluetooth.Kind) common.DeviceType {
+	if kind == bluetooth.KindThermometer {
+		return common.ThermometerAndHygrometer
+	}
+
+	return common.Unknown
+}
+
+// applyKind makes the device of the kind, and registers its entity if it has none yet.
+func (p *plugin) applyKind(dev *device, kind bluetooth.Kind, makeAndModel string) {
+	dev.DeviceType = deviceTypeOf(kind)
 	dev.DeviceMakeAndModel = makeAndModel
 
 	if dev.PmaasEntityId == "" {

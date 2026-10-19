@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avanha/pmaas-bluetooth-devices/govee"
+	"github.com/avanha/pmaas-bluetooth-devices/inkbird"
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
 	spi "github.com/avanha/pmaas-spi"
 	"github.com/avanha/pmaas-spi/bluetooth"
@@ -193,6 +195,8 @@ func newFixture(t *testing.T, config PluginConfig) *fixture {
 	t.Helper()
 
 	f := &fixture{t: t, container: newFakeContainer(), clock: epoch}
+	config.Recognize(govee.All()...)
+	config.Recognize(inkbird.All()...)
 	f.plugin = NewPlugin(config).(*plugin)
 	f.plugin.now = func() time.Time { return f.clock }
 	f.plugin.Init(f.container)
@@ -805,9 +809,9 @@ func TestInterest_ScansPassivelyUnlessTheAssemblyAsksForActive(t *testing.T) {
 // What a passive scan hears of an Inkbird: no name, which is only in the scan response.
 const inkbirdPassiveFrame = "0201060302f0ff0aff6607970f0099606408"
 
-func TestAddInkbirdThermometer_IsDecodedWithoutTheNameItGivesOnlyInAScanResponse(t *testing.T) {
+func TestAddInkbird_IsDecodedWithoutTheNameItGivesOnlyInAScanResponse(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddInkbirdThermometer("49-22-01-23-0a-1b", "Patio")
+	config.Add(inkbird.Thermometer("49-22-01-23-0a-1b", "Patio"))
 	f := newFixture(t, config)
 
 	// It is a thermometer, and known for what it is, from the start.
@@ -824,9 +828,9 @@ func TestAddInkbirdThermometer_IsDecodedWithoutTheNameItGivesOnlyInAScanResponse
 	}
 }
 
-func TestAddInkbirdThermometer_TheSourcesAreAskedForItByAddress(t *testing.T) {
+func TestAddInkbird_TheSourcesAreAskedForItByAddress(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	config.Add(inkbird.Thermometer(inkbirdAddres, "Patio"))
 	f := newFixture(t, config)
 
 	found := false
@@ -854,12 +858,12 @@ func TestAdvertisement_AnInkbirdNobodyConfiguredIsNotGuessedFromItsServiceAlone(
 	}
 }
 
-func TestAddInkbirdThermometer_MistakesPanic(t *testing.T) {
+func TestAddInkbird_MistakesPanic(t *testing.T) {
 	for name, mistake := range map[string]func(){
-		"not an address": func() { c := NewPluginConfig(); c.AddInkbirdThermometer("nope", "x") },
+		"not an address": func() { inkbird.Thermometer("nope", "x") },
 		"added twice": func() {
 			c := NewPluginConfig()
-			c.AddInkbirdThermometer(inkbirdAddres, "x")
+			c.Add(inkbird.Thermometer(inkbirdAddres, "x"))
 			c.AddThermometer(inkbirdAddres, "y")
 		},
 	} {
@@ -916,7 +920,7 @@ func (w *windowFixture) minute() {
 
 func TestActiveScanWindows_AnInkbirdIsHeardForAWhileEveryFewMinutes(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	config.Add(inkbird.Thermometer(inkbirdAddres, "Patio"))
 	w := newWindowFixture(t, config)
 
 	// A window right away, for the default 30 seconds.
@@ -956,7 +960,7 @@ func TestActiveScanWindows_AnInkbirdIsHeardForAWhileEveryFewMinutes(t *testing.T
 
 func TestActiveScanWindows_AreConfigurable(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	config.Add(inkbird.Thermometer(inkbirdAddres, "Patio"))
 	config.ActiveScanEvery, config.ActiveScanFor = 5*time.Minute, 10*time.Second
 	w := newWindowFixture(t, config)
 
@@ -992,7 +996,7 @@ func TestActiveScanWindows_NotWithoutADeviceThatNeedsThem(t *testing.T) {
 func TestActiveScanWindows_ActiveScanAlwaysOnNeedsNoWindows(t *testing.T) {
 	config := NewPluginConfig()
 	config.ActiveScan = true
-	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	config.Add(inkbird.Thermometer(inkbirdAddres, "Patio"))
 	w := newWindowFixture(t, config)
 
 	w.minute()
@@ -1004,7 +1008,7 @@ func TestActiveScanWindows_ActiveScanAlwaysOnNeedsNoWindows(t *testing.T) {
 
 func TestActiveScanWindows_StoppingEndsTheTimer(t *testing.T) {
 	config := NewPluginConfig()
-	config.AddInkbirdThermometer(inkbirdAddres, "Patio")
+	config.Add(inkbird.Thermometer(inkbirdAddres, "Patio"))
 	w := newWindowFixture(t, config)
 
 	w.plugin.Stop()

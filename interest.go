@@ -3,22 +3,24 @@ package bluetooth
 import (
 	"time"
 
-	"github.com/avanha/pmaas-plugin-bluetooth/parser"
 	"github.com/avanha/pmaas-spi/bluetooth"
 )
 
-// interest is what the sources are to forward: whatever the parsers recognise, and every device the assembly named. Sensors
-// repeat themselves, so they are coalesced; nothing here needs more than that yet.
+// interest is what the sources are to forward: whatever the models recognise, and every device the assembly named. Sensors
+// repeat themselves, so they are coalesced unless a device's rules say otherwise (a button's frames are not).
 func (p *plugin) interest() []bluetooth.Rule {
-	rules := parser.Rules()
+	var rules []bluetooth.Rule
+
+	for _, model := range p.models {
+		rules = append(rules, model.Rules()...)
+	}
 
 	for _, address := range p.configured {
 		rules = append(rules, bluetooth.Rule{Name: "configured " + address, Address: address})
 	}
 
-	// A button's every frame, as it is heard: the first of a burst is the press, and nothing may wait.
-	for _, button := range p.beaconButtons {
-		rules = append(rules, bluetooth.Rule{Name: "button " + button.name, Address: button.address, Latency: bluetooth.Immediate})
+	for _, device := range p.configuredDevices {
+		rules = append(rules, device.Rules()...)
 	}
 
 	return rules

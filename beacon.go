@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/avanha/pmaas-spi"
+	"github.com/avanha/pmaas-spi/bluetooth"
 	spidevice "github.com/avanha/pmaas-spi/device"
 	environmental "github.com/avanha/pmaas-spi/environment"
 )
@@ -37,7 +38,7 @@ type publishedBeacon struct {
 	LastHeard time.Time
 	RSSI      environmental.RSSIData
 
-	// Battery is empty until the beacon has said (see batteryLevel).
+	// Battery is empty until the beacon has said (see Result.Battery).
 	Battery    environmental.BatteryData
 	Millivolts int
 
@@ -53,8 +54,8 @@ func (b publishedBeacon) SortKey() string {
 // publishBeacon is the page's view of a beacon button. Runs on the plugin goroutine.
 func (b *button) publish() publishedBeacon {
 	view := publishedBeacon{
-		Name:          b.config.name,
-		Address:       b.config.address,
+		Name:          b.name,
+		Address:       b.config.(bluetooth.Addressed).Address(),
 		Kind:          "Beacon button",
 		Heard:         !b.lastHeard.IsZero(),
 		LastHeard:     b.lastHeard,
@@ -89,26 +90,6 @@ func batteryIcon(level int) string {
 
 func isLowBattery(level int) bool {
 	return level < 20
-}
-
-// batteryLevel is a rough battery level from a coin cell's voltage: they hold close to their rated voltage for most of their life
-// and then fall away, which is why the steps are not even. It is what the beacon's owner wants to know (is it time to change
-// it), not a measurement.
-func batteryLevel(millivolts int) int {
-	steps := [...]struct{ millivolts, percent int }{{3000, 100}, {2900, 80}, {2800, 55}, {2700, 30}, {2600, 15}, {2400, 5}, {2000, 0}}
-
-	if millivolts >= steps[0].millivolts {
-		return 100
-	}
-
-	for i := 1; i < len(steps); i++ {
-		hi, lo := steps[i-1], steps[i]
-		if millivolts >= lo.millivolts {
-			return lo.percent + (hi.percent-lo.percent)*(millivolts-lo.millivolts)/(hi.millivolts-lo.millivolts)
-		}
-	}
-
-	return 0
 }
 
 var thermometerTemplate = spi.TemplateInfo{

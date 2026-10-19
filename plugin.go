@@ -15,7 +15,6 @@ import (
 	"github.com/avanha/pmaas-spi/logging"
 
 	"github.com/avanha/pmaas-plugin-bluetooth/common"
-	"github.com/avanha/pmaas-plugin-bluetooth/parser"
 	"github.com/avanha/pmaas-spi"
 	"github.com/avanha/pmaas-spi/bluetooth"
 	"github.com/avanha/pmaas-spi/clock"
@@ -75,8 +74,13 @@ type device struct {
 	// we recognize devices. Readings are not kept because for some devices each reading is a new key.
 	known bluetooth.Fields
 
-	// The parser used to decode the device's advertisements once the device is identified.
-	parser *parser.Parser
+	// model is what identified the device, if a model did, and impl the device's own state, which decodes its advertisements once it
+	// is identified or claimed. disabled is that impl panicked, so is not heard any more. claimChecked is that the configured devices
+	// that claim by more than a fixed address have been asked about it.
+	model        bluetooth.DeviceModel
+	impl         bluetooth.Device
+	disabled     bool
+	claimChecked bool
 
 	// Signals tracks how each source hears the device, by the source's entity ID.
 	signals map[string]signal
@@ -134,7 +138,15 @@ type plugin struct {
 	container spi.IPMAASContainer
 	devices   map[string]*device
 
-	// configured are the addresses the assembly named, which the sources are asked for whatever else is wanted.
+	// models are what the assembly asked to have recognised, configuredDevices what it configured, buttonDevices the ones that are
+	// buttons (watched from the start, by address), and claimers those that claim by more than a fixed address.
+	models            []bluetooth.DeviceModel
+	configuredDevices []bluetooth.ConfiguredDevice
+	buttonDevices     []bluetooth.ConfiguredDevice
+	claimers          []bluetooth.ConfiguredDevice
+
+	// configured are the addresses of thermometers the assembly named only by address, which the sources are asked for whatever
+	// else is wanted.
 	configured []string
 
 	// receivers are the handles of the event receivers registered, to be given back when the plugin stops.
@@ -155,9 +167,8 @@ type plugin struct {
 	stopWindow         func()
 	after              func(d time.Duration, f func()) (cancel func())
 
-	// beaconButtons are the buttons the assembly named, and buttons the ones being watched, by address.
-	beaconButtons []*BeaconButton
-	buttons       map[string]*button
+	// buttons are the buttons being watched, by address.
+	buttons map[string]*button
 
 	now func() time.Time
 }
@@ -168,38 +179,56 @@ type BluetoothPlugin interface {
 
 func NewPlugin(config PluginConfig) BluetoothPlugin {
 	instance := &plugin{
-		devices:       make(map[string]*device),
-		now:           time.Now,
-		listAll:       config.ListAllDevices,
-		activeScan:    config.ActiveScan,
-		scanEvery:     config.ActiveScanEvery,
-		scanFor:       config.ActiveScanFor,
-		beaconButtons: config.buttons,
-		buttons:       make(map[string]*button),
+		devices:           make(map[string]*device),
+		now:               time.Now,
+		listAll:           config.ListAllDevices,
+		activeScan:        config.ActiveScan,
+		scanEvery:         config.ActiveScanEvery,
+		scanFor:           config.ActiveScanFor,
+		models:            config.models,
+		configuredDevices: config.added,
+		buttons:           make(map[string]*button),
 	}
 
-	for _, configured := range config.buttons {
-		if len(configured.frames) == 0 {
-			panic(fmt.Sprintf("bluetooth: the button %q (%s) needs at least one press: say which frame is Single, Double, Triple or Long",
-				configured.name, configured.address))
+	for _, configured := range config.added {
+		if err := validateConfigured(configured); err != nil {
+			panic(fmt.Sprintf("bluetooth: %v", err))
+		}
+
+		if configured.NeedsScanResponse() {
+			instance.needsScanResponses = true
+		}
+
+		addressed, isAddressed := configured.(bluetooth.Addressed)
+
+		switch {
+		case configured.Kind() == bluetooth.KindButton:
+			instance.buttonDevices = append(instance.buttonDevices, configured)
+		case isAddressed:
+			dev := &device{
+				Address:      addressed.Address(),
+				Name:         configured.Name(),
+				LocalName:    configured.Name(),
+				claimChecked: true,
+			}
+
+			instance.adopt(dev, configured)
+			instance.devices[dev.Address] = dev
+		default:
+			instance.claimers = append(instance.claimers, configured)
 		}
 	}
 
 	for address, dev := range config.devices {
 		instance.devices[address] = &device{
-			Address:            dev.Address,
-			LocalName:          dev.LocalName,
-			DeviceType:         dev.DeviceType,
-			parser:             dev.parser,
-			DeviceMakeAndModel: dev.DeviceMakeAndModel,
-			Name:               dev.LocalName,
+			Address:      dev.Address,
+			LocalName:    dev.LocalName,
+			DeviceType:   dev.DeviceType,
+			Name:         dev.LocalName,
+			claimChecked: true,
 		}
 
 		instance.configured = append(instance.configured, address)
-
-		if dev.parser != nil && dev.parser.NeedsScanResponse {
-			instance.needsScanResponses = true
-		}
 	}
 
 	sort.Strings(instance.configured)
