@@ -35,6 +35,7 @@ type PluginConfig struct {
 	ActiveScanFor   time.Duration
 
 	devices map[string]*device
+	handles map[string]*ThermometerHandle
 	models  []bluetooth.DeviceModel
 	added   []bluetooth.ConfiguredDevice
 }
@@ -46,6 +47,7 @@ func NewPluginConfig() PluginConfig {
 		ActiveScanEvery:   3 * time.Minute,
 		ActiveScanFor:     30 * time.Second,
 		devices:           make(map[string]*device),
+		handles:           make(map[string]*ThermometerHandle),
 	}
 }
 
@@ -118,7 +120,9 @@ func validateConfigured(device bluetooth.ConfiguredDevice) error {
 // bluetooth plugin asks the sources for it. What it is, is for the models to recognise (see Recognize); to say what it is, use
 // a device package's builder with Add. The address is any case, with ":" or "-"; it panics if it is not an address or has been
 // added already, like regexp.MustCompile does for a pattern that can't be: it is written in the program.
-func (c *PluginConfig) AddThermometer(address string, name string) {
+//
+// It returns the handle on the thermometer, which an automation can read (see ThermometerHandle).
+func (c *PluginConfig) AddThermometer(address string, name string) *ThermometerHandle {
 	normal, ok := bluetooth.NormalizeAddress(address)
 	if !ok {
 		panic(fmt.Sprintf("Device address %q is not a Bluetooth address like AA:BB:CC:DD:EE:FF", address))
@@ -135,4 +139,8 @@ func (c *PluginConfig) AddThermometer(address string, name string) {
 	}
 
 	c.devices[normal] = &device{Address: normal, LocalName: name, DeviceType: common.Thermometer}
+	handle := &ThermometerHandle{name: name}
+	c.handles[normal] = handle
+
+	return handle
 }

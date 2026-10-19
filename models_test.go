@@ -252,3 +252,31 @@ func TestAdd_AButtonHasToHaveAFixedAddress(t *testing.T) {
 	config := NewPluginConfig()
 	config.Add(&buttonWithoutAddress{})
 }
+
+func TestAddThermometer_TheHandleReadsWhatTheDeviceReportsAndIsEmptyBeforeAndAfter(t *testing.T) {
+	config := NewPluginConfig()
+	handle := config.AddThermometer(goveeAddress, "Master Bedroom")
+
+	if handle.Name() != "Master Bedroom" || handle.GetWirelessThermometerData().SensorData.HasData {
+		t.Fatalf("before the plugin starts: %+v", handle.GetWirelessThermometerData())
+	}
+
+	f := newFixture(t, config)
+
+	if got := handle.GetWirelessThermometerData(); got.Name != "Master Bedroom" || got.SensorData.HasData {
+		t.Errorf("before anything is heard: %+v", got)
+	}
+
+	f.hear("s", goveeAddress, -61, goveeFrame)
+
+	got := handle.GetWirelessThermometerData()
+	if got.Name != "Master Bedroom" || !got.SensorData.HasData || got.SensorData.Temperature != 21.1 || got.BatteryData.Level != 100 || !got.SensorData.LastUpdateTime.Equal(f.clock) {
+		t.Errorf("%+v", got)
+	}
+
+	f.plugin.Stop()
+
+	if handle.GetWirelessThermometerData().SensorData.HasData {
+		t.Error("the handle still reads after the plugin stopped")
+	}
+}

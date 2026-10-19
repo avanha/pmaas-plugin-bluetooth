@@ -170,6 +170,9 @@ type plugin struct {
 	// buttons are the buttons being watched, by address.
 	buttons map[string]*button
 
+	// handles are the assembly's handles on thermometers, by address.
+	handles map[string]*ThermometerHandle
+
 	now func() time.Time
 }
 
@@ -185,6 +188,7 @@ func NewPlugin(config PluginConfig) BluetoothPlugin {
 		activeScan:        config.ActiveScan,
 		scanEvery:         config.ActiveScanEvery,
 		scanFor:           config.ActiveScanFor,
+		handles:           config.handles,
 		models:            config.models,
 		configuredDevices: config.added,
 		buttons:           make(map[string]*button),
@@ -285,6 +289,16 @@ func (p *plugin) Init(container spi.IPMAASContainer) {
 
 		return func() { timer.Stop() }
 	}
+	for address, handle := range p.handles {
+		handle.attach(container, func() environmental.WirelessThermometer {
+			if dev, ok := p.devices[address]; ok {
+				return dev.WirelessThermometer
+			}
+
+			return environmental.WirelessThermometer{}
+		})
+	}
+
 	container.ProvideContentFS(&contentFS, "content")
 	container.EnableStaticContent("static")
 	container.AddRoute("", p.HandleHttpList)
@@ -428,6 +442,10 @@ func (p *plugin) Stop() chan func() {
 
 	p.closeScanWindow()
 	p.stopButtons()
+
+	for _, handle := range p.handles {
+		handle.detach()
+	}
 
 	for _, dev := range p.devices {
 		if dev.PmaasEntityId != "" {
