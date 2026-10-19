@@ -1,5 +1,7 @@
 # Bluetooth: sources, and the plugin that makes sense of them
 
+See also `DEVICE_MODELS.md`: the proposal to move device knowledge out of this plugin.
+
 Status: 2026-10-17. Phases 1 to 4 are built and tested, and not yet released or run on the Pi: the contract in
 `pmaas-spi/bluetooth`, the parsers, the BlueZ source, and the ESPHome proxy source, with this plugin consuming. Buttons are not. Where this
 spec and that package differ, the package is right: `Fields` is embedded in `AdvertisementEvent`, the coalescer returns a
