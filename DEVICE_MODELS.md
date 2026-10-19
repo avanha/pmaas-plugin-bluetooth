@@ -17,7 +17,7 @@ Device knowledge is in four places: `parser/` (Govee, Inkbird), `AddInkbirdTherm
 ## The model (pmaas-spi/bluetooth)
 
 ```go
-// Recognises a kind of device nobody configured, and decodes it.
+// Recognizes a kind of device nobody configured, and decodes it.
 type DeviceModel interface {
     Name() string               // "Govee GVH5075"
     Rules() []Rule              // what sources should forward, and how fast
