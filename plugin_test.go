@@ -571,16 +571,6 @@ func TestTheTestDeviceIsListedWithoutAnySource(t *testing.T) {
 	}
 }
 
-func TestRelativeTime(t *testing.T) {
-	for ago, want := range map[time.Duration]string{
-		time.Second: "< 30s", 45 * time.Second: "< 1m", 5 * time.Minute: "5m", 3 * time.Hour: "3h",
-	} {
-		if got := RelativeTime(time.Now().Add(-ago)); got != want {
-			t.Errorf("%v ago: %q, want %q", ago, got, want)
-		}
-	}
-}
-
 func (f *fixture) sight(source string, address string, kind bluetooth.AddressType, name string, rssi int) {
 	f.t.Helper()
 

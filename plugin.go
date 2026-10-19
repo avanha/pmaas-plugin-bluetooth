@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/avanha/pmaas-spi/format"
 	"io"
 	"log/slog"
 	"net/http"
@@ -28,7 +29,7 @@ var contentFS embed.FS
 var bluetoothDeviceTemplate = spi.TemplateInfo{
 	Name: "bluetooth_device",
 	FuncMap: template.FuncMap{
-		"RelativeTime": RelativeTime,
+		"RelativeTime": format.Terse,
 	},
 	Paths:  []string{"templates/bluetooth_device.htmlt"},
 	Styles: []string{"css/bluetooth_device.css"},
@@ -538,26 +539,4 @@ func (p *plugin) broadcastStateChangedEvent(dev *device) {
 	if err != nil {
 		p.log.Error("failed to broadcast EntityStateChangedEvent", "error", err)
 	}
-}
-
-func RelativeTime(timeValue time.Time) string {
-	elapsed := time.Now().Sub(timeValue).Truncate(time.Second)
-
-	if elapsed.Seconds() < 30 {
-		return "< 30s"
-	}
-
-	if elapsed.Seconds() < 60 {
-		return "< 1m"
-	}
-
-	elapsed = elapsed.Truncate(time.Minute)
-
-	if elapsed.Minutes() < 60 {
-		return fmt.Sprintf("%vm", elapsed.Minutes())
-	}
-
-	elapsed = elapsed.Truncate(time.Hour)
-
-	return fmt.Sprintf("%vh", elapsed.Hours())
 }

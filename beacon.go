@@ -3,6 +3,7 @@ package bluetooth
 import (
 	"errors"
 	"fmt"
+	"github.com/avanha/pmaas-spi/format"
 	"io"
 	"reflect"
 	"text/template"
@@ -16,7 +17,7 @@ import (
 
 var beaconTemplate = spi.TemplateInfo{
 	Name:    "bluetooth_beacon",
-	FuncMap: template.FuncMap{"RelativeTime": RelativeTime, "BatteryIcon": batteryIcon, "IsLowBattery": isLowBattery},
+	FuncMap: template.FuncMap{"RelativeTime": format.Terse, "BatteryIcon": batteryIcon, "IsLowBattery": isLowBattery},
 	Paths:   []string{"templates/bluetooth_beacon.htmlt"},
 	Styles:  []string{"css/bluetooth_device.css"},
 }
@@ -95,7 +96,7 @@ func isLowBattery(level int) bool {
 var thermometerTemplate = spi.TemplateInfo{
 	Name: "bluetooth_thermometer",
 	FuncMap: template.FuncMap{
-		"RelativeTime":        RelativeTime,
+		"RelativeTime":        format.Terse,
 		"BatteryIcon":         batteryIcon,
 		"IsLowBattery":        isLowBattery,
 		"CelsiusToFahrenheit": func(c float32) float32 { return c*9/5 + 32 },
