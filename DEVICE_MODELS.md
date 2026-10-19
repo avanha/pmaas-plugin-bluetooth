@@ -24,7 +24,7 @@ type DeviceModel interface {
     Rules() []Rule              // what sources should forward, and how fast
     NeedsScanResponse() bool    // its data is in scan responses
     Identify(known Fields) bool // from everything heard of a device so far
-    New(cfg DeviceConfig) Device
+    New(cfg DeviceConfig) (Device, error) // error: the config doesn't suit this model
 }
 
 // One per device. Owns that device's state: the Inkbird's changing keys, a button's burst.
@@ -105,4 +105,7 @@ Each is releasable, and behaviour doesn't change until the last.
 ## Open
 
 * Entity kinds beyond sensor readings and buttons (door, motion) still need a change here and in spi. Acceptable for now.
-* Whether a model may refuse a config (`New` returning an error) when `cfg` doesn't suit it.
+* **Bad config.** Today a bad `AddBeaconButton` (no frames, two presses on one frame) panics when the config is built. With models from
+  other plugins the check can only happen at `New`, after `Start`, when the model is found. So `New` returns an error: the plugin
+  logs it, shows the device as "refused: reason", and carries on. Settings specific to a model (the button's frames) go in
+  `DeviceConfig` as a generic map the model validates, so the assembly needn't import the model's package.
