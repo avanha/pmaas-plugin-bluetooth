@@ -15,8 +15,8 @@
     {{else}}
         <div class="info-row">
             <div class="address">
-                {{printf "%.2f" .SensorData.Temperature}} C &nbsp; {{CelsiusToFahrenheit .SensorData.Temperature | printf "%.2f"}} F
-                {{if .SensorData.HasHumidity}} &nbsp; <i class="bi bi-droplet-fill"></i> {{.SensorData.Humidity}}%{{end}}
+                {{Temperature .SensorData.Temperature}} C &nbsp; {{Fahrenheit .SensorData.Temperature}} F
+                {{if .SensorData.HasHumidity}} &nbsp; <i class="bi bi-droplet-fill"></i> {{Humidity .SensorData.Humidity}}%{{end}}
             </div>
             <div class="timestamp"><div class="label">Updated</div><div class="value">{{RelativeTime .SensorData.LastUpdateTime}}</div></div>
         </div>

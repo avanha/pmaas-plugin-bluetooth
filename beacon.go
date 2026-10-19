@@ -96,10 +96,10 @@ func isLowBattery(level int) bool {
 var thermometerTemplate = spi.TemplateInfo{
 	Name: "bluetooth_thermometer",
 	FuncMap: template.FuncMap{
-		"RelativeTime":        format.Terse,
-		"BatteryIcon":         batteryIcon,
-		"IsLowBattery":        isLowBattery,
-		"CelsiusToFahrenheit": func(c float32) float32 { return c*9/5 + 32 },
+		"RelativeTime": format.Terse,
+		"BatteryIcon":  batteryIcon,
+		"IsLowBattery": isLowBattery,
+		"Temperature":  format.Temperature, "Fahrenheit": format.Fahrenheit, "Humidity": format.Humidity,
 	},
 	Paths:  []string{"templates/bluetooth_thermometer.htmlt"},
 	Styles: []string{"css/bluetooth_device.css"},
