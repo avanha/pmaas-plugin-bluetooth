@@ -1,6 +1,6 @@
 # Bluetooth device models
 
-Status: proposal, 2026-10-19. Nothing here is built.
+Status: design agreed, 2026-10-19. Nothing here is built.
 
 ## Goal
 
@@ -82,8 +82,8 @@ Active-scan windows follow `NeedsScanResponse()` of the configured devices, as n
 ## Registration: none
 
 Models are passed in config, so there is no discovery between plugins, no start order, and no version check beyond the compiler.
-The alternative to `Recognize(devices.All()...)` is `init()` registration, as `database/sql` drivers do it: a blank import registers
-every model. It needs no call at all, at the price of a global registry and recognition that depends on what is imported.
+Decided: an explicit `All()`, not `init()` registration. It is obvious, checked by the compiler, has no global state, and the assembly can
+pick a subset when it wants to.
 
 If models ever have to arrive independently of the assembly (plugins started and stopped at runtime), they can be offered as an
 entity and found the way dblog finds trackables: register for entity events, then `GetEntities`. Nothing here prevents that.
