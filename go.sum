@@ -1,4 +1,4 @@
 github.com/avanha/pmaas-bluetooth-devices v0.0.1 h1:m+dibU0mHxNNDbrZ0ZMzHqP6HDoVpq36I0lrWFA1+xI=
 github.com/avanha/pmaas-bluetooth-devices v0.0.1/go.mod h1:3mNZrKBQgPNpN9Zazw8Bz6k3reO5iAk8c+OE8FIzWeA=
-github.com/avanha/pmaas-spi v0.0.20 h1:+1DXuFL3dNRGBHrtftZobgDCp84gn700UyhrAhctDyQ=
-github.com/avanha/pmaas-spi v0.0.20/go.mod h1:vKV8Ke5QXei42A4agIgxypbznjLqFQyi2hvqSyoe7c0=
+github.com/avanha/pmaas-spi v0.0.21 h1:dyBnGK9UQia1vRy+BluCiKOdkRJIo9XHN9APbloYruo=
+github.com/avanha/pmaas-spi v0.0.21/go.mod h1:vKV8Ke5QXei42A4agIgxypbznjLqFQyi2hvqSyoe7c0=
