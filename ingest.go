@@ -190,6 +190,8 @@ func (p *plugin) adopt(dev *device, configured bluetooth.ConfiguredDevice) {
 
 	if dev.PmaasEntityId == "" && p.container != nil {
 		p.registerDevice(dev)
+	} else if p.container != nil {
+		p.giveView(dev)
 	}
 }
 
@@ -250,6 +252,8 @@ func (p *plugin) applyKind(dev *device, kind bluetooth.Kind, makeAndModel string
 
 	if dev.PmaasEntityId == "" {
 		p.registerDevice(dev)
+	} else {
+		p.giveView(dev)
 	}
 }
 
@@ -306,6 +310,10 @@ func (p *plugin) forget(dev *device) {
 		if err := p.container.DeregisterEntity(dev.PmaasEntityId); err != nil {
 			p.log.Error("device could not be deregistered", "name", dev.Name, "address", dev.Address, "error", err)
 		}
+	}
+
+	if handle := p.handles[dev.Address]; handle != nil {
+		handle.setEntityId("")
 	}
 
 	delete(p.devices, dev.Address)

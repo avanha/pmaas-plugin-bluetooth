@@ -48,6 +48,7 @@ type fakeContainer struct {
 	off          []int
 	broadcasts   []any
 	listed       []interface{}
+	views        map[string]spi.EntityViewFunc
 }
 
 func newFakeContainer() *fakeContainer {
@@ -74,6 +75,19 @@ func (c *fakeContainer) RegisterEntity(uniqueData string, entityType reflect.Typ
 	c.entities[uniqueData] = entityType
 
 	return id, nil
+}
+
+func (c *fakeContainer) RegisterEntityView(id string, view spi.EntityViewFunc) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.views == nil {
+		c.views = map[string]spi.EntityViewFunc{}
+	}
+
+	c.views[id] = view
+
+	return nil
 }
 
 func (c *fakeContainer) DeregisterEntity(id string) error {

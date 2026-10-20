@@ -21,6 +21,7 @@ import (
 	"github.com/avanha/pmaas-spi/clock"
 	environmental "github.com/avanha/pmaas-spi/environment"
 	"github.com/avanha/pmaas-spi/events"
+	"github.com/avanha/pmaas-spi/group"
 )
 
 //go:embed content/static content/templates
@@ -69,6 +70,9 @@ type device struct {
 
 	// Indicates that the device is using a temporary MAC address.  Devices with temporary addresses age out sooner.
 	temporary bool
+
+	// viewGiven is that the device's entity has a view (see giveView).
+	viewGiven bool
 
 	// Known is accumulated data about the device, including its name and services advertised so far.  The data is
 	// merged across multiple advertisements, since the name can come in one, while readings in another.  This is how
@@ -338,7 +342,7 @@ func (p *plugin) listItems() []interface{} {
 
 		var pd Sortable
 
-		if device.DeviceType == common.Thermometer || device.DeviceType == common.ThermometerAndHygrometer {
+		if isThermometer(device.DeviceType) {
 			pd = publishedWirelessThermometer{device.WirelessThermometer}
 		} else {
 			pd = publishedDevice{
@@ -446,6 +450,7 @@ func (p *plugin) Stop() chan func() {
 
 	for _, handle := range p.handles {
 		handle.detach()
+		handle.setEntityId("")
 	}
 
 	for _, dev := range p.devices {
@@ -515,6 +520,45 @@ func (p *plugin) registerDevice(dev *device) {
 	}
 
 	dev.PmaasEntityId = id
+
+	if handle := p.handles[dev.Address]; handle != nil {
+		handle.setEntityId(id)
+	}
+
+	p.giveView(dev)
+}
+
+// giveView gives a thermometer's entity the view of its card, for a page that lists the entities of many plugins. Other devices are
+// not shown on such a page: what is heard nearby is not what a house is made of. It is done once the device is known to be a
+// thermometer, which may be after its entity was registered.
+func (p *plugin) giveView(dev *device) {
+	if dev.PmaasEntityId == "" || dev.viewGiven || !isThermometer(dev.DeviceType) {
+		return
+	}
+
+	address := dev.Address
+
+	err := p.container.RegisterEntityView(dev.PmaasEntityId, func() (spi.EntityView, error) {
+		current, ok := p.devices[address]
+		if !ok {
+			return spi.EntityView{}, errors.New("the thermometer is no longer known")
+		}
+
+		return spi.EntityView{
+			Key: "bluetooth/" + address, Category: group.CategoryThermometers, Value: publishedWirelessThermometer{current.WirelessThermometer},
+		}, nil
+	})
+	if err != nil {
+		p.log.Error("unable to register the view of a thermometer", "address", address, "error", err)
+
+		return
+	}
+
+	dev.viewGiven = true
+}
+
+func isThermometer(deviceType common.DeviceType) bool {
+	return deviceType == common.Thermometer || deviceType == common.ThermometerAndHygrometer
 }
 
 func getEntityType(deviceType common.DeviceType) reflect.Type {

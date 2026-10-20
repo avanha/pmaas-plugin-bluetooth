@@ -5,11 +5,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	spi "github.com/avanha/pmaas-spi"
 	"github.com/avanha/pmaas-spi/bluetooth"
 	spicommon "github.com/avanha/pmaas-spi/common"
 	spidevice "github.com/avanha/pmaas-spi/device"
 	environmental "github.com/avanha/pmaas-spi/environment"
 	"github.com/avanha/pmaas-spi/events"
+	"github.com/avanha/pmaas-spi/group"
 )
 
 // BeaconButton is a button that is a Bluetooth beacon advertising an iBeacon frame for a few seconds after it is pressed, a
@@ -166,6 +168,12 @@ func (p *plugin) startButtons() {
 
 		b.id = id
 		p.buttons[address] = b
+
+		if err := p.container.RegisterEntityView(id, func() (spi.EntityView, error) {
+			return spi.EntityView{Key: "bluetooth/" + address, Category: group.CategoryButtons, Value: b.publish()}, nil
+		}); err != nil {
+			p.log.Error("unable to register the view of a button", "name", b.name, "error", err)
+		}
 
 		if binder, ok := configured.(bluetooth.ButtonBinder); ok {
 			event := spicommon.StubAvailableEvent[spidevice.IButton]{EntityEvent: b.entityEvent(), EntityStub: b.stub}

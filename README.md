@@ -142,3 +142,9 @@ function: What if Temp and Humidity are both zero?
 Perhaps there needs to be an additional bool to indicate empty/non-empty, though a temp/humidity of 0/0 should be rare. 
 
 
+
+## Putting thermometers and buttons in groups
+
+The handles are `entity.Ref`s (`RegisteredId`), so the assembly can give them to the groups plugin: the handle `AddThermometer` returns, and a
+beacon button's (`ButtonHandle`). A thermometer's entity has a view, its card, listed under Thermometers; a button's, listed under Buttons.
+Other devices heard nearby are not offered to such a page: what is heard is not what a house is made of.
