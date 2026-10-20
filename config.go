@@ -75,7 +75,9 @@ func (c *PluginConfig) Recognize(models ...bluetooth.DeviceModel) {
 // Add adds a device the assembly configures, which a device package's builder makes (inkbird.Thermometer, bluecharm.Button), or
 // IBeaconButton. It panics if the device is badly configured, or its address is already named, like regexp.MustCompile does for a
 // pattern that can't be: it is written in the program.
-func (c *PluginConfig) Add(device bluetooth.ConfiguredDevice) {
+//
+// For a thermometer with an address it returns the handle on it, as AddThermometer does; for any other device it returns nil.
+func (c *PluginConfig) Add(device bluetooth.ConfiguredDevice) *ThermometerHandle {
 	if device == nil {
 		panic("bluetooth: Add was given a nil device")
 	}
@@ -99,6 +101,15 @@ func (c *PluginConfig) Add(device bluetooth.ConfiguredDevice) {
 	}
 
 	c.added = append(c.added, device)
+
+	if addressed, ok := device.(bluetooth.Addressed); ok && device.Kind() == bluetooth.KindThermometer {
+		handle := &ThermometerHandle{name: device.Name()}
+		c.handles[addressed.Address()] = handle
+
+		return handle
+	}
+
+	return nil
 }
 
 // validateConfigured is what is wrong with how a device was configured, if anything.

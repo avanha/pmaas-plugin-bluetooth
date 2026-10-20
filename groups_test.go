@@ -1,8 +1,11 @@
 package bluetooth
 
 import (
+	"github.com/avanha/pmaas-bluetooth-devices/bluecharm"
+	"github.com/avanha/pmaas-bluetooth-devices/inkbird"
 	"testing"
 
+	spibluetooth "github.com/avanha/pmaas-spi/bluetooth"
 	spidevice "github.com/avanha/pmaas-spi/device"
 	"github.com/avanha/pmaas-spi/group"
 )
@@ -97,5 +100,29 @@ func TestGroups_AButtonHandleNamesItsEntityAndItsViewIsItsCard(t *testing.T) {
 
 	if f.container.entities[buttonAddress] != spidevice.IButtonType {
 		t.Error("the button is not registered as a button")
+	}
+}
+
+func TestGroups_AThermometerAddedFromAModelHasAHandleToo(t *testing.T) {
+	config := NewPluginConfig()
+	handle := config.Add(inkbird.Thermometer(inkbirdAddres, "Patio"))
+
+	if handle == nil {
+		t.Fatal("no handle for the Inkbird thermometer")
+	}
+
+	f := newFixture(t, config)
+
+	id, ok := handle.RegisteredId()
+	if !ok || id == "" {
+		t.Fatalf("%q %v", id, ok)
+	}
+
+	if f.container.views[id] == nil {
+		t.Error("the Inkbird thermometer has no view")
+	}
+
+	if config.Add(bluecharm.Button("DD:88:00:00:3D:36", "Couch button").Single(spibluetooth.MatchAnyIBeacon().WithMajor(0))) != nil {
+		t.Error("a button was given a thermometer handle")
 	}
 }
